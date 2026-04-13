@@ -5,7 +5,7 @@ services:
     region: oregon
     rootDir: server
     buildCommand: npm install && npx prisma generate
-    startCommand: npx prisma db push --accept-data-loss && npm start
+    startCommand: npx prisma db push && npm start
     envVars:
       - key: NODE_ENV
         value: production
