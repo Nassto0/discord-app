@@ -18,13 +18,21 @@ export function TitleBar() {
   if (!window.electronAPI) return null;
 
   const handleZoomIn = () => {
-    document.body.style.zoom = String(parseFloat(document.body.style.zoom || '1') + 0.1);
+    const wc = (window as any).electronAPI?.webContents;
+    if (wc) { wc.zoomIn(); return; }
+    // Fallback: use Electron's built-in zoom via keyboard event simulation
+    const event = new KeyboardEvent('keydown', { key: '+', ctrlKey: true });
+    document.dispatchEvent(event);
   };
   const handleZoomOut = () => {
-    document.body.style.zoom = String(Math.max(0.5, parseFloat(document.body.style.zoom || '1') - 0.1));
+    const wc = (window as any).electronAPI?.webContents;
+    if (wc) { wc.zoomOut(); return; }
+    const event = new KeyboardEvent('keydown', { key: '-', ctrlKey: true });
+    document.dispatchEvent(event);
   };
   const handleZoomReset = () => {
-    document.body.style.zoom = '1';
+    const wc = (window as any).electronAPI?.webContents;
+    if (wc) { wc.zoomReset(); return; }
   };
 
   return (

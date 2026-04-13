@@ -88,6 +88,22 @@ ipcMain.on('window:close', () => {
   mainWindow?.hide();
 });
 
+// IPC handlers for zoom (uses Chromium's native zoom which scales everything uniformly)
+ipcMain.on('zoom:in', () => {
+  if (!mainWindow) return;
+  const wc = mainWindow.webContents;
+  wc.setZoomLevel(wc.getZoomLevel() + 0.5);
+});
+ipcMain.on('zoom:out', () => {
+  if (!mainWindow) return;
+  const wc = mainWindow.webContents;
+  wc.setZoomLevel(wc.getZoomLevel() - 0.5);
+});
+ipcMain.on('zoom:reset', () => {
+  if (!mainWindow) return;
+  mainWindow.webContents.setZoomLevel(0);
+});
+
 app.whenReady().then(() => {
   createWindow();
   createTray();
