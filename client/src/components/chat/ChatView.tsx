@@ -39,7 +39,10 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
       if (!activeConversationId) return localStorage.getItem('chat-wallpaper') || 'none';
       try {
         const map = JSON.parse(localStorage.getItem('chat-wallpapers') || '{}') as Record<string, string>;
-        return map[activeConversationId] || localStorage.getItem('chat-wallpaper') || 'none';
+        if (Object.prototype.hasOwnProperty.call(map, activeConversationId)) {
+          return map[activeConversationId] || 'none';
+        }
+        return localStorage.getItem('chat-wallpaper') || 'none';
       } catch {
         return localStorage.getItem('chat-wallpaper') || 'none';
       }
@@ -137,6 +140,7 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     current[activeConversationId] = value;
     localStorage.setItem('chat-wallpapers', JSON.stringify(current));
     setWallpaper(value);
+    window.dispatchEvent(new Event('wallpaper-changed'));
   };
 
   const clearConversationWallpaper = () => {
@@ -147,6 +151,7 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     delete current[activeConversationId];
     localStorage.setItem('chat-wallpapers', JSON.stringify(current));
     setWallpaper(localStorage.getItem('chat-wallpaper') || 'none');
+    window.dispatchEvent(new Event('wallpaper-changed'));
   };
 
   const handleWallpaperUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,7 +177,7 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     waves: { backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 14px, var(--color-border) 14px, var(--color-border) 15px)' },
   };
   const wallpaperStyle = wallpaper.startsWith('custom:')
-    ? { backgroundImage: `url(${fileUrl(wallpaper.replace('custom:', ''))})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    ? { backgroundImage: `url(${fileUrl(wallpaper.replace('custom:', ''))})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }
     : (wallpaperStyles[wallpaper] || {});
   const bestStreak = Object.values(streaks).reduce((max, value) => Math.max(max, value), 0);
 

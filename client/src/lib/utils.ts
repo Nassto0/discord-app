@@ -45,6 +45,8 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 export function fileUrl(url: string | null | undefined): string {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) return url;
+  // Handle protocol-less absolute hosts that may exist in older persisted rows.
+  if (/^[a-z0-9.-]+\.[a-z]{2,}\/.+/i.test(url)) return `https://${url}`;
   const normalized = url.startsWith('/') ? url : `/uploads/${url}`;
   return `${API_URL}${normalized}`;
 }

@@ -38,6 +38,29 @@ let outputGainNode: GainNode | null = null;
 let outputSourceNode: MediaStreamAudioSourceNode | null = null;
 let outputMediaDest: MediaStreamAudioDestinationNode | null = null;
 let audioSettingsListenerBound = false;
+let localMicSourceNode: MediaStreamAudioSourceNode | null = null;
+let localMicDestinationNode: MediaStreamAudioDestinationNode | null = null;
+
+function ensureAudioElement(): HTMLAudioElement {
+  if (!audioEl) {
+    audioEl = new Audio();
+    audioEl.autoplay = true;
+    (audioEl as any).playsInline = true;
+    audioEl.muted = false;
+  }
+  return audioEl;
+}
+
+function tryPlayAudioElement() {
+  if (!audioEl) return;
+  audioEl.play().catch((err) => {
+    console.error('[WebRTC] autoplay blocked:', err);
+    // Retry once shortly after; some browsers unblock after call accept UI closes.
+    window.setTimeout(() => {
+      audioEl?.play().catch(() => {});
+    }, 400);
+  });
+}
 
 // Mute the audio element whenever isDeafened toggles in the store
 useCallStore.subscribe((state) => {
@@ -55,7 +78,7 @@ async function switchInputDevice(deviceId: string) {
     const newStream = await navigator.mediaDevices.getUserMedia({
       audio: { deviceId: deviceId !== 'default' ? { exact: deviceId } : undefined },
     });
-    const newTrack = newStream.getAudioTracks()[0];
+    const newTrack = buildMicTrack(newStream);
     const sender = pc.getSenders().find((s) => s.track?.kind === 'audio');
     if (sender) {
       // Stop old track, replace with new
@@ -75,7 +98,7 @@ function onAudioSettingsChanged(e: Event) {
   if (type === 'output-volume') {
     if (outputGainNode) outputGainNode.gain.value = Math.max(0, Math.min(2, value / 100));
   } else if (type === 'input-volume') {
-    if (inputGainNode) inputGainNode.gain.value = Math.max(0, Math.min(2, value / 50));
+    if (inputGainNode) inputGainNode.gain.value = Math.max(0, Math.min(2.5, value / 45));
   } else if (type === 'output-device') {
     // Switch output device on audio element (Chrome/Edge only)
     if (audioEl && typeof (audioEl as any).setSinkId === 'function') {
@@ -109,6 +132,46 @@ function getSavedOutputVolume(): number {
   return 1;
 }
 
+function getSavedInputVolume(): number {
+  try {
+    const settings = localStorage.getItem('audio-settings');
+    if (settings) {
+      const parsed = JSON.parse(settings);
+      const value = Number(parsed.inputVolume);
+      if (!Number.isNaN(value)) return Math.max(0, Math.min(2.5, value / 45));
+    }
+  } catch {}
+  return 1.6;
+}
+
+function cleanupInputAudioChain() {
+  if (localMicSourceNode) { try { localMicSourceNode.disconnect(); } catch {} localMicSourceNode = null; }
+  if (inputGainNode) { try { inputGainNode.disconnect(); } catch {} inputGainNode = null; }
+  localMicDestinationNode = null;
+  if (inputAudioCtx) { try { inputAudioCtx.close(); } catch {} inputAudioCtx = null; }
+}
+
+function buildMicTrack(stream: MediaStream): MediaStreamTrack {
+  const rawTrack = stream.getAudioTracks()[0];
+  if (!rawTrack) throw new Error('No microphone track available');
+  cleanupInputAudioChain();
+  try {
+    inputAudioCtx = new AudioContext();
+    localMicSourceNode = inputAudioCtx.createMediaStreamSource(stream);
+    inputGainNode = inputAudioCtx.createGain();
+    inputGainNode.gain.value = getSavedInputVolume();
+    localMicDestinationNode = inputAudioCtx.createMediaStreamDestination();
+    localMicSourceNode.connect(inputGainNode);
+    inputGainNode.connect(localMicDestinationNode);
+    if (inputAudioCtx.state === 'suspended') inputAudioCtx.resume().catch(() => {});
+    const processedTrack = localMicDestinationNode.stream.getAudioTracks()[0];
+    return processedTrack || rawTrack;
+  } catch {
+    cleanupInputAudioChain();
+    return rawTrack;
+  }
+}
+
 function cleanupWebRTC() {
   isNegotiating = false;
   if (pc) {
@@ -128,6 +191,7 @@ function cleanupWebRTC() {
   if (outputGainNode) { try { outputGainNode.disconnect(); } catch {} outputGainNode = null; }
   outputMediaDest = null;
   if (outputAudioCtx) { try { outputAudioCtx.close(); } catch {} outputAudioCtx = null; }
+  cleanupInputAudioChain();
   remoteBaseStream = null;
   pendingCandidates = [];
   activeTargetUserId = null;
@@ -237,15 +301,17 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
       outputSourceNode = outputAudioCtx.createMediaStreamSource(remote);
       outputSourceNode.connect(outputGainNode!);
 
-      if (!audioEl) {
-        audioEl = new Audio();
-        audioEl.autoplay = true;
-        (audioEl as any).playsInline = true;
-        audioEl.muted = false;
+      const el = ensureAudioElement();
+      if (el.srcObject !== outputMediaDest!.stream) {
+        el.srcObject = outputMediaDest!.stream;
+        tryPlayAudioElement();
       }
-      if (audioEl.srcObject !== outputMediaDest!.stream) {
-        audioEl.srcObject = outputMediaDest!.stream;
-        audioEl.play().catch((e) => console.error('[WebRTC] autoplay blocked:', e));
+    } else if (remote.getAudioTracks().length > 0) {
+      // Fallback: if processing path is unavailable, attach remote stream directly.
+      const el = ensureAudioElement();
+      if (el.srcObject !== remote) {
+        el.srcObject = remote;
+        tryPlayAudioElement();
       }
     }
   };
@@ -360,11 +426,10 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     }
   });
 
-  // Read all voice-processing settings from localStorage — all default to ON (true)
-  // 'false' must be explicitly stored to disable any of them
-  const echoCancel = localStorage.getItem('audio-echo-cancel') !== 'false';
-  const noiseSuppress = localStorage.getItem('audio-noise-suppress') !== 'false';
-  const autoGain = localStorage.getItem('audio-auto-gain') !== 'false';
+  // Raw mode by default: process only when explicitly enabled by the user.
+  const echoCancel = localStorage.getItem('audio-echo-cancel') === 'true';
+  const noiseSuppress = localStorage.getItem('audio-noise-suppress') === 'true';
+  const autoGain = localStorage.getItem('audio-auto-gain') === 'true';
   const savedSettings = localStorage.getItem('audio-settings');
   let inputDeviceId: string | undefined;
   if (savedSettings) {
@@ -379,7 +444,7 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: inputDeviceId ? { ideal: inputDeviceId } : undefined,
-        echoCancellation: echoCancel, // Reads from setting — defaults to true
+        echoCancellation: echoCancel,
         noiseSuppression: noiseSuppress,
         autoGainControl: autoGain,
         sampleRate: 48000,
@@ -403,10 +468,12 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     return;
   }
 
-  store.setLocalStream(stream);
+  const micTrack = buildMicTrack(stream);
+  const outboundStream = new MediaStream([micTrack, ...stream.getVideoTracks()]);
+  store.setLocalStream(outboundStream);
   // addTrack fires onnegotiationneeded but isSetupComplete is still false,
   // so the guard at the top of the handler prevents a spurious offer
-  stream.getTracks().forEach((track) => pc!.addTrack(track, stream));
+  outboundStream.getTracks().forEach((track) => pc!.addTrack(track, outboundStream));
   localStreamReady = true;
 
   if (isInitiator) {

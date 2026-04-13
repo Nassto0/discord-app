@@ -224,6 +224,23 @@ adminRouter.delete('/messages/:id', async (_req: AuthRequest, res: Response) => 
   }
 });
 
+// Admin delete any story
+adminRouter.delete('/stories/:id', async (_req: AuthRequest, res: Response) => {
+  try {
+    const storyId = String(_req.params.id);
+    const story = await prisma.story.findUnique({ where: { id: storyId } });
+    if (!story) {
+      res.status(404).json({ message: 'Not found' });
+      return;
+    }
+    await prisma.story.delete({ where: { id: storyId } });
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Admin delete story error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // Flagged content
 adminRouter.get('/flagged', async (_req: AuthRequest, res: Response) => {
   try {

@@ -102,6 +102,7 @@ export const api = {
     userActions: (id: string) => request<any[]>(`/admin/users/${id}/actions`),
     deletePost: (id: string) => request<any>(`/admin/posts/${id}`, { method: 'DELETE' }),
     deleteMessage: (id: string) => request<any>(`/admin/messages/${id}`, { method: 'DELETE' }),
+    deleteStory: (id: string) => request<any>(`/admin/stories/${id}`, { method: 'DELETE' }),
     flagged: () => request<any>('/admin/flagged'),
   },
   streaks: {

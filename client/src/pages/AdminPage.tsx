@@ -148,6 +148,17 @@ export function AdminPage({ onBack }: AdminPageProps) {
     }
   };
 
+  const handleDeleteStory = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this story? This cannot be undone.')) return;
+    try {
+      await api.admin.deleteStory(id);
+      pushToast('Story deleted', 'success');
+    } catch (err) {
+      console.error('Failed to delete story:', err);
+      pushToast('Failed to delete story', 'error');
+    }
+  };
+
   const handleUpdateRole = async (userId: string, role: string) => {
     try {
       await api.admin.updateRole(userId, role);
@@ -378,11 +389,12 @@ export function AdminPage({ onBack }: AdminPageProps) {
                                       <X className="h-3.5 w-3.5" />
                                       Dismiss
                                     </button>
-                                    {(report.targetType === 'post' || report.targetType === 'message') && (
+                                    {(report.targetType === 'post' || report.targetType === 'message' || report.targetType === 'story') && (
                                       <button
                                         onClick={() => {
                                           if (report.targetType === 'post') handleDeletePost(report.targetId);
-                                          else handleDeleteMessage(report.targetId);
+                                          else if (report.targetType === 'message') handleDeleteMessage(report.targetId);
+                                          else handleDeleteStory(report.targetId);
                                         }}
                                         disabled={actionLoading === report.id}
                                         className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-bold text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50">

@@ -175,9 +175,9 @@ export function AudioSettings() {
       <div>
         <h3 className="text-sm font-bold text-foreground mb-4">Voice Processing</h3>
         <div className="space-y-2">
-          <ToggleSetting label="Echo Cancellation" description="Reduces echo from speakers bleeding into mic." defaultChecked={true} storageKey="echo-cancel" />
-          <ToggleSetting label="Noise Suppression" description="Filters background noise for clearer audio." defaultChecked={true} storageKey="noise-suppress" />
-          <ToggleSetting label="Auto Gain Control" description="Automatically adjusts mic volume for consistent levels." defaultChecked={true} storageKey="auto-gain" />
+          <ToggleSetting label="Echo Cancellation" description="Reduces echo from speakers bleeding into mic." defaultChecked={false} storageKey="echo-cancel" />
+          <ToggleSetting label="Noise Suppression" description="Filters background noise for clearer audio." defaultChecked={false} storageKey="noise-suppress" />
+          <ToggleSetting label="Auto Gain Control" description="Automatically adjusts mic volume for consistent levels." defaultChecked={false} storageKey="auto-gain" />
         </div>
       </div>
 
