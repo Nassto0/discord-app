@@ -152,7 +152,7 @@ export function useSocket() {
       const total = useChatStore.getState().conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
       document.title = total > 0 ? `(${total}) Nasscord` : 'Nasscord';
     };
-    useChatStore.subscribe(updateTitle);
+    const unsubTitle = useChatStore.subscribe(updateTitle);
 
     socket.on('conversation:updated', (conv) => {
       useChatStore.getState().updateConversation(conv);
@@ -165,6 +165,7 @@ export function useSocket() {
     });
 
     return () => {
+      unsubTitle();
       socket.disconnect();
       globalSocket = null;
     };

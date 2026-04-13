@@ -48,6 +48,7 @@ conversationRouter.get('/', authenticateToken, async (req: AuthRequest, res: Res
             ...c.messages[0],
             readBy: JSON.parse(c.messages[0].readBy),
             createdAt: c.messages[0].createdAt.toISOString(),
+            editedAt: c.messages[0].editedAt ? c.messages[0].editedAt.toISOString() : null,
             sender: { ...c.messages[0].sender, lastSeen: c.messages[0].sender.lastSeen.toISOString(), createdAt: c.messages[0].sender.createdAt.toISOString() },
             replyTo: null,
           }
@@ -262,12 +263,14 @@ conversationRouter.get('/:id/messages', authenticateToken, async (req: AuthReque
       ...m,
       readBy: JSON.parse(m.readBy),
       createdAt: m.createdAt.toISOString(),
+      editedAt: m.editedAt ? m.editedAt.toISOString() : null,
       sender: { ...m.sender, lastSeen: m.sender.lastSeen.toISOString(), createdAt: m.sender.createdAt.toISOString() },
       replyTo: m.replyTo
         ? {
             ...m.replyTo,
             readBy: JSON.parse(m.replyTo.readBy),
             createdAt: m.replyTo.createdAt.toISOString(),
+            editedAt: m.replyTo.editedAt ? m.replyTo.editedAt.toISOString() : null,
             sender: { ...m.replyTo.sender, lastSeen: m.replyTo.sender.lastSeen.toISOString(), createdAt: m.replyTo.sender.createdAt.toISOString() },
             replyTo: null,
           }

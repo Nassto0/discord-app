@@ -86,7 +86,7 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     longPressTimer.current = window.setTimeout(() => {
-      // Vibrate for haptic feedback if available
+      longPressTimer.current = null; // Mark as consumed so touchEnd knows it was a long press
       if (navigator.vibrate) navigator.vibrate(30);
       setContextMenu({
         x: Math.max(8, Math.min(touch.clientX, window.innerWidth - 200)),
