@@ -41,8 +41,47 @@ export function getInitials(name: string): string {
 }
 
 // Resolve relative file URLs (e.g. /uploads/file.jpg) to absolute when API is on another origin.
-// Set VITE_API_URL on Vercel to your Render API origin (no trailing slash). Redeploy after changing env.
+// Priority: VITE_UPLOADS_BASE_URL → cached origin from /auth/me (nasscord-asset-base) → VITE_API_URL.
+// Set VITE_API_URL on Vercel; optional VITE_UPLOADS_BASE_URL if uploads are on another host/CDN.
 const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const UPLOADS_BASE = String(import.meta.env.VITE_UPLOADS_BASE_URL || '').replace(/\/+$/, '');
+
+const ASSET_BASE_STORAGE_KEY = 'nasscord-asset-base';
+
+/** Call when auth responses include assetBaseUrl so fileUrl works even if VITE_* was misconfigured. */
+export function cachePublicAssetOrigin(origin: string | null | undefined): void {
+  if (typeof origin !== 'string' || !/^https?:\/\//i.test(origin)) return;
+  try {
+    localStorage.setItem(ASSET_BASE_STORAGE_KEY, origin.replace(/\/+$/, ''));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function clearPublicAssetOriginCache(): void {
+  try {
+    localStorage.removeItem(ASSET_BASE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readCachedPublicAssetOrigin(): string {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    return String(localStorage.getItem(ASSET_BASE_STORAGE_KEY) || '').replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** First non-empty wins: dedicated uploads CDN → server hint from login → API origin. */
+function resolveMediaOrigin(): string {
+  if (UPLOADS_BASE) return UPLOADS_BASE;
+  const cached = readCachedPublicAssetOrigin();
+  if (cached) return cached;
+  return API_BASE;
+}
 
 export function fileUrl(url: string | null | undefined): string {
   if (!url) return '';
@@ -60,8 +99,9 @@ export function fileUrl(url: string | null | undefined): string {
     else path = `/uploads/${path}`;
   }
 
-  if (!API_BASE) return path;
-  return `${API_BASE}${path}`;
+  const origin = resolveMediaOrigin();
+  if (!origin) return path;
+  return `${origin}${path}`;
 }
 
 export function formatLastSeen(dateStr: string): string {

@@ -1,8 +1,14 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma, generateToken, authenticateToken, AuthRequest } from '../middleware/auth';
+import { getPublicApiOrigin } from '../lib/publicOrigin';
 
 export const authRouter = Router();
+
+function assetBaseHint(): { assetBaseUrl: string } | Record<string, never> {
+  const base = getPublicApiOrigin();
+  return base ? { assetBaseUrl: base } : {};
+}
 
 const userFields = (u: any) => ({
   id: u.id, username: u.username, email: u.email, avatar: u.avatar, banner: u.banner, bio: u.bio,
@@ -30,7 +36,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({ data: { username, email, passwordHash } });
-    res.status(201).json({ token: generateToken(user.id), user: userFields(user) });
+    res.status(201).json({ token: generateToken(user.id), user: userFields(user), ...assetBaseHint() });
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -61,7 +67,11 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     if (!valid) { res.status(401).json({ message: 'Invalid email or password' }); return; }
 
     await prisma.user.update({ where: { id: user.id }, data: { status: 'online', lastSeen: new Date() } });
-    res.json({ token: generateToken(user.id), user: { ...userFields(user), status: 'online', lastSeen: new Date().toISOString() } });
+    res.json({
+      token: generateToken(user.id),
+      user: { ...userFields(user), status: 'online', lastSeen: new Date().toISOString() },
+      ...assetBaseHint(),
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -72,7 +82,7 @@ authRouter.get('/me', authenticateToken, async (req: AuthRequest, res: Response)
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) { res.status(404).json({ message: 'User not found' }); return; }
-    res.json(userFields(user));
+    res.json({ ...userFields(user), ...assetBaseHint() });
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ message: 'Internal server error' });

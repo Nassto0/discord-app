@@ -25,9 +25,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   auth: {
     register: (data: { username: string; email: string; password: string }) =>
-      request<{ token: string; user: any }>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+      request<{ token: string; user: any; assetBaseUrl?: string }>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
     login: (data: { email: string; password: string }) =>
-      request<{ token: string; user: any }>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+      request<{ token: string; user: any; assetBaseUrl?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
     me: () => request<any>('/auth/me'),
   },
   users: {

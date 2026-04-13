@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
+import { cachePublicAssetOrigin, clearPublicAssetOriginCache } from '@/lib/utils';
 
 interface User {
   id: string;
@@ -57,19 +58,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   login: async (email, password) => {
-    const { token, user } = await api.auth.login({ email, password });
-    localStorage.setItem('token', token);
-    set({ token, user: normalizeUser(user) });
+    const data = await api.auth.login({ email, password });
+    cachePublicAssetOrigin(data.assetBaseUrl);
+    localStorage.setItem('token', data.token);
+    set({ token: data.token, user: normalizeUser(data.user) });
   },
 
   register: async (username, email, password) => {
-    const { token, user } = await api.auth.register({ username, email, password });
-    localStorage.setItem('token', token);
-    set({ token, user: normalizeUser(user) });
+    const data = await api.auth.register({ username, email, password });
+    cachePublicAssetOrigin(data.assetBaseUrl);
+    localStorage.setItem('token', data.token);
+    set({ token: data.token, user: normalizeUser(data.user) });
   },
 
   logout: () => {
     localStorage.removeItem('token');
+    clearPublicAssetOriginCache();
     set({ user: null, token: null });
   },
 
@@ -80,10 +84,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       return;
     }
     try {
-      const user = await api.auth.me();
+      const payload = await api.auth.me();
+      cachePublicAssetOrigin(payload?.assetBaseUrl);
+      const { assetBaseUrl: _hint, ...user } = payload;
       set({ user: normalizeUser(user), token, isLoading: false });
     } catch {
       localStorage.removeItem('token');
+      clearPublicAssetOriginCache();
       set({ user: null, token: null, isLoading: false });
     }
   },
