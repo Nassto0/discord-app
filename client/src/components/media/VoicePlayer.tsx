@@ -18,10 +18,19 @@ export function VoicePlayer({ src, duration }: VoicePlayerProps) {
   useEffect(() => {
     const audio = new Audio(src);
     audioRef.current = audio;
-    audio.addEventListener('loadedmetadata', () => { if (audio.duration !== Infinity) setTotalDuration(audio.duration); });
-    audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime));
-    audio.addEventListener('ended', () => { setIsPlaying(false); setCurrentTime(0); });
-    return () => { audio.pause(); audio.remove(); };
+    const onLoaded = () => { if (audio.duration !== Infinity) setTotalDuration(audio.duration); };
+    const onTime = () => setCurrentTime(audio.currentTime);
+    const onEnded = () => { setIsPlaying(false); setCurrentTime(0); };
+    audio.addEventListener('loadedmetadata', onLoaded);
+    audio.addEventListener('timeupdate', onTime);
+    audio.addEventListener('ended', onEnded);
+    return () => {
+      audio.pause();
+      audio.removeEventListener('loadedmetadata', onLoaded);
+      audio.removeEventListener('timeupdate', onTime);
+      audio.removeEventListener('ended', onEnded);
+      audio.remove();
+    };
   }, [src]);
 
   const togglePlay = useCallback(() => {

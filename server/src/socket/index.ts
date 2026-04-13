@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { checkContent, checkUrl } from '../lib/automod';
 
 const prisma = new PrismaClient();
+const db = prisma as any;
 
 const onlineUsers = new Map<string, Set<string>>();
 let ioRef: Server | null = null;
@@ -135,7 +136,7 @@ export function setupSocketHandlers(io: Server) {
         if (conv.type === 'dm') {
           const otherId = conv.members.find((m) => m.userId !== userId)?.userId;
           if (otherId) {
-            const blocked = await prisma.block.findFirst({
+            const blocked = await db.block.findFirst({
               where: {
                 OR: [
                   { blockerId: userId, blockedId: otherId },
@@ -176,7 +177,7 @@ export function setupSocketHandlers(io: Server) {
 
         const serialized = serializeMessage(message);
         if (fileUrl) {
-          await prisma.messageAttachment.create({
+          await db.messageAttachment.create({
             data: {
               messageId: message.id,
               url: String(fileUrl),
@@ -190,7 +191,7 @@ export function setupSocketHandlers(io: Server) {
         if (conv.type === 'dm') {
           const targetUserId = conv.members.find((m) => m.userId !== userId)?.userId;
           if (targetUserId) {
-            await prisma.notification.create({
+            await db.notification.create({
               data: {
                 userId: targetUserId,
                 type: 'message',
@@ -330,22 +331,22 @@ export function setupSocketHandlers(io: Server) {
         const updated = await prisma.$transaction(async (tx) => {
           const msg = await tx.message.findUnique({ where: { id: String(messageId) } });
           if (!msg) return null;
-          const existing = await tx.messageReaction.findUnique({
+          const existing = await (tx as any).messageReaction.findUnique({
             where: { messageId_userId_emoji: { messageId: msg.id, userId, emoji: String(emoji) } },
           });
           if (existing) {
-            await tx.messageReaction.delete({ where: { id: existing.id } });
+            await (tx as any).messageReaction.delete({ where: { id: existing.id } });
           } else {
-            await tx.messageReaction.create({
+            await (tx as any).messageReaction.create({
               data: { messageId: msg.id, userId, emoji: String(emoji) },
             });
           }
-          const all = await tx.messageReaction.findMany({ where: { messageId: msg.id } });
-          const reactions = all.reduce<Record<string, string[]>>((acc, row) => {
+          const all = await (tx as any).messageReaction.findMany({ where: { messageId: msg.id } });
+          const reactions = (all as any[]).reduce((acc: Record<string, string[]>, row: any) => {
             if (!acc[row.emoji]) acc[row.emoji] = [];
             acc[row.emoji].push(row.userId);
             return acc;
-          }, {});
+          }, {} as Record<string, string[]>);
           await tx.message.update({
             where: { id: msg.id },
             data: { reactions: JSON.stringify(reactions) },

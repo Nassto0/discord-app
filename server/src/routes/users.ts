@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { prisma, authenticateToken, AuthRequest } from '../middleware/auth';
 
 export const userRouter = Router();
+const db = prisma as any;
 
 const userSelect = {
   id: true, username: true, avatar: true, banner: true, bio: true,
@@ -56,14 +57,14 @@ userRouter.get('/:id', authenticateToken, async (req: AuthRequest, res: Response
     const user = await prisma.user.findUnique({ where: { id: targetId }, select: userSelect });
     if (!user) { res.status(404).json({ message: 'User not found' }); return; }
     const [follow, block, followersCount, followingCount] = await Promise.all([
-      prisma.follow.findUnique({
+      db.follow.findUnique({
         where: { followerId_followingId: { followerId: req.userId!, followingId: targetId } },
       }),
-      prisma.block.findUnique({
+      db.block.findUnique({
         where: { blockerId_blockedId: { blockerId: req.userId!, blockedId: targetId } },
       }),
-      prisma.follow.count({ where: { followingId: targetId } }),
-      prisma.follow.count({ where: { followerId: targetId } }),
+      db.follow.count({ where: { followingId: targetId } }),
+      db.follow.count({ where: { followerId: targetId } }),
     ]);
     res.json({
       ...user,
@@ -112,12 +113,12 @@ userRouter.post('/:id/follow', authenticateToken, async (req: AuthRequest, res: 
   try {
     const targetId = String(req.params.id);
     if (targetId === req.userId) { res.status(400).json({ message: 'Cannot follow yourself' }); return; }
-    await prisma.follow.upsert({
+    await db.follow.upsert({
       where: { followerId_followingId: { followerId: req.userId!, followingId: targetId } },
       create: { followerId: req.userId!, followingId: targetId },
       update: {},
     });
-    await prisma.notification.create({
+    await db.notification.create({
       data: {
         userId: targetId,
         type: 'follow',
@@ -133,7 +134,7 @@ userRouter.post('/:id/follow', authenticateToken, async (req: AuthRequest, res: 
 userRouter.delete('/:id/follow', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const targetId = String(req.params.id);
-    await prisma.follow.deleteMany({
+    await db.follow.deleteMany({
       where: { followerId: req.userId!, followingId: targetId },
     });
     res.json({ following: false });
@@ -146,12 +147,12 @@ userRouter.post('/:id/block', authenticateToken, async (req: AuthRequest, res: R
   try {
     const targetId = String(req.params.id);
     if (targetId === req.userId) { res.status(400).json({ message: 'Cannot block yourself' }); return; }
-    await prisma.block.upsert({
+    await db.block.upsert({
       where: { blockerId_blockedId: { blockerId: req.userId!, blockedId: targetId } },
       create: { blockerId: req.userId!, blockedId: targetId },
       update: {},
     });
-    await prisma.follow.deleteMany({
+    await db.follow.deleteMany({
       where: {
         OR: [
           { followerId: req.userId!, followingId: targetId },
@@ -168,7 +169,7 @@ userRouter.post('/:id/block', authenticateToken, async (req: AuthRequest, res: R
 userRouter.delete('/:id/block', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const targetId = String(req.params.id);
-    await prisma.block.deleteMany({ where: { blockerId: req.userId!, blockedId: targetId } });
+    await db.block.deleteMany({ where: { blockerId: req.userId!, blockedId: targetId } });
     res.json({ blocked: false });
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
@@ -177,12 +178,12 @@ userRouter.delete('/:id/block', authenticateToken, async (req: AuthRequest, res:
 
 userRouter.get('/notifications/list', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const items = await prisma.notification.findMany({
+    const items = await db.notification.findMany({
       where: { userId: req.userId! },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    res.json(items.map((n) => ({
+    res.json(items.map((n: any) => ({
       ...n,
       createdAt: n.createdAt.toISOString(),
       updatedAt: n.updatedAt.toISOString(),
@@ -196,7 +197,7 @@ userRouter.get('/notifications/list', authenticateToken, async (req: AuthRequest
 userRouter.post('/notifications/:id/read', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params.id);
-    await prisma.notification.updateMany({
+    await db.notification.updateMany({
       where: { id, userId: req.userId! },
       data: { read: true },
     });

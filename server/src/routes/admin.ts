@@ -61,8 +61,9 @@ adminRouter.get('/reports', async (req: AuthRequest, res: Response) => {
 adminRouter.put('/reports/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { status, reviewNote } = req.body;
+    const reportId = String(req.params.id);
     const report = await prisma.report.update({
-      where: { id: req.params.id },
+      where: { id: reportId },
       data: { status, reviewNote, reviewedBy: req.userId },
     });
     res.json({ ...report, createdAt: report.createdAt.toISOString() });
@@ -102,6 +103,7 @@ adminRouter.get('/users', async (_req: AuthRequest, res: Response) => {
 adminRouter.put('/users/:id/role', async (req: AuthRequest, res: Response) => {
   try {
     const { role } = req.body;
+    const targetId = String(req.params.id);
     if (!['user', 'admin'].includes(role)) {
       res.status(400).json({ message: 'Invalid role' });
       return;
@@ -112,7 +114,7 @@ adminRouter.put('/users/:id/role', async (req: AuthRequest, res: Response) => {
       res.status(403).json({ message: 'Only owner can change roles' });
       return;
     }
-    await prisma.user.update({ where: { id: req.params.id }, data: { role } });
+    await prisma.user.update({ where: { id: targetId }, data: { role } });
     res.json({ updated: true });
   } catch (error) {
     console.error('Admin update role error:', error);
@@ -127,7 +129,7 @@ adminRouter.post('/users/:id/moderate', async (req: AuthRequest, res: Response) 
       res.status(400).json({ message: 'Action and reason are required' });
       return;
     }
-    const targetId = req.params.id;
+    const targetId = String(req.params.id);
     const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
     if (!me) {
       res.status(401).json({ message: 'Not authenticated' });
@@ -183,8 +185,9 @@ adminRouter.post('/users/:id/moderate', async (req: AuthRequest, res: Response) 
 
 adminRouter.get('/users/:id/actions', async (req: AuthRequest, res: Response) => {
   try {
+    const targetId = String(req.params.id);
     const actions = await prisma.adminAction.findMany({
-      where: { targetId: req.params.id },
+      where: { targetId },
       orderBy: { createdAt: 'desc' },
       take: 20,
       include: { admin: { select: { id: true, username: true } } },
@@ -198,7 +201,8 @@ adminRouter.get('/users/:id/actions', async (req: AuthRequest, res: Response) =>
 // Admin delete any post
 adminRouter.delete('/posts/:id', async (_req: AuthRequest, res: Response) => {
   try {
-    await prisma.post.delete({ where: { id: _req.params.id } });
+    const postId = String(_req.params.id);
+    await prisma.post.delete({ where: { id: postId } });
     res.json({ deleted: true });
   } catch (error) {
     console.error('Admin delete post error:', error);
@@ -209,9 +213,10 @@ adminRouter.delete('/posts/:id', async (_req: AuthRequest, res: Response) => {
 // Admin delete any message
 adminRouter.delete('/messages/:id', async (_req: AuthRequest, res: Response) => {
   try {
-    const msg = await prisma.message.findUnique({ where: { id: _req.params.id } });
+    const messageId = String(_req.params.id);
+    const msg = await prisma.message.findUnique({ where: { id: messageId } });
     if (!msg) { res.status(404).json({ message: 'Not found' }); return; }
-    await prisma.message.delete({ where: { id: _req.params.id } });
+    await prisma.message.delete({ where: { id: messageId } });
     res.json({ deleted: true, conversationId: msg.conversationId });
   } catch (error) {
     console.error('Admin delete message error:', error);

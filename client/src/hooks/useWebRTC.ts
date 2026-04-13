@@ -37,6 +37,7 @@ let outputAudioCtx: AudioContext | null = null;
 let outputGainNode: GainNode | null = null;
 let outputSourceNode: MediaStreamAudioSourceNode | null = null;
 let outputMediaDest: MediaStreamAudioDestinationNode | null = null;
+let audioSettingsListenerBound = false;
 
 // Mute the audio element whenever isDeafened toggles in the store
 useCallStore.subscribe((state) => {
@@ -90,7 +91,10 @@ function onAudioSettingsChanged(e: Event) {
     if (Object.keys(constraints).length > 0) applyAudioConstraintsInternal(constraints);
   }
 }
-window.addEventListener('audio-settings-changed', onAudioSettingsChanged);
+if (!audioSettingsListenerBound) {
+  window.addEventListener('audio-settings-changed', onAudioSettingsChanged);
+  audioSettingsListenerBound = true;
+}
 
 function applyAudioConstraintsInternal(constraints: MediaTrackConstraints) {
   const stream = useCallStore.getState().localStream;

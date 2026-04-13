@@ -138,15 +138,16 @@ postRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response) 
 
 postRouter.post('/:id/like', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const postId = String(req.params.id);
     const existing = await prisma.postLike.findUnique({
-      where: { postId_userId: { postId: req.params.id, userId: req.userId! } },
+      where: { postId_userId: { postId, userId: req.userId! } },
     });
 
     if (existing) {
       await prisma.postLike.delete({ where: { id: existing.id } });
       res.json({ liked: false });
     } else {
-      await prisma.postLike.create({ data: { postId: req.params.id, userId: req.userId! } });
+      await prisma.postLike.create({ data: { postId, userId: req.userId! } });
       res.json({ liked: true });
     }
   } catch (error) {
@@ -157,6 +158,7 @@ postRouter.post('/:id/like', authenticateToken, async (req: AuthRequest, res: Re
 
 postRouter.post('/:id/comments', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const postId = String(req.params.id);
     const me = await prisma.user.findUnique({
       where: { id: req.userId! },
       select: { mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true },
@@ -174,7 +176,7 @@ postRouter.post('/:id/comments', authenticateToken, async (req: AuthRequest, res
     const { content } = req.body;
     if (!content?.trim()) { res.status(400).json({ message: 'Content required' }); return; }
     const comment = await prisma.postComment.create({
-      data: { postId: req.params.id, authorId: req.userId!, content: content.trim() },
+      data: { postId, authorId: req.userId!, content: content.trim() },
       include: { author: { select: userSelect } },
     });
     res.status(201).json({
@@ -190,7 +192,8 @@ postRouter.post('/:id/comments', authenticateToken, async (req: AuthRequest, res
 
 postRouter.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const post = await prisma.post.findUnique({ where: { id: req.params.id } });
+    const postId = String(req.params.id);
+    const post = await prisma.post.findUnique({ where: { id: postId } });
     if (!post) { res.status(404).json({ message: 'Not found' }); return; }
     // Allow owner/admin to delete any post
     const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
@@ -198,7 +201,7 @@ postRouter.delete('/:id', authenticateToken, async (req: AuthRequest, res: Respo
       res.status(403).json({ message: 'Not allowed' });
       return;
     }
-    await prisma.post.delete({ where: { id: req.params.id } });
+    await prisma.post.delete({ where: { id: postId } });
     res.json({ deleted: true });
   } catch (error) {
     console.error('Delete post error:', error);

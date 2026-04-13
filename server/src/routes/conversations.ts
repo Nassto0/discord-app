@@ -191,7 +191,7 @@ conversationRouter.post('/', authenticateToken, async (req: AuthRequest, res: Re
 
 conversationRouter.post('/:id/members', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { userId: targetUserId } = req.body;
     const conv = await prisma.conversation.findUnique({ where: { id } });
     if (!conv || conv.type !== 'group') { res.status(400).json({ message: 'Not a group' }); return; }
@@ -215,7 +215,8 @@ conversationRouter.post('/:id/members', authenticateToken, async (req: AuthReque
 
 conversationRouter.delete('/:id/members/:userId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { id, userId: targetUserId } = req.params;
+    const id = String(req.params.id);
+    const targetUserId = String(req.params.userId);
     const conv = await prisma.conversation.findUnique({ where: { id } });
     if (!conv || conv.type !== 'group') { res.status(400).json({ message: 'Not a group' }); return; }
     if (conv.createdBy !== req.userId && req.userId !== targetUserId) {
@@ -230,7 +231,7 @@ conversationRouter.delete('/:id/members/:userId', authenticateToken, async (req:
 
 conversationRouter.post('/:id/leave', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await prisma.conversationMember.delete({
       where: { conversationId_userId: { conversationId: id, userId: req.userId! } },
     });
@@ -240,7 +241,7 @@ conversationRouter.post('/:id/leave', authenticateToken, async (req: AuthRequest
 
 conversationRouter.get('/:id/messages', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const cursor = req.query.cursor as string | undefined;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
 
