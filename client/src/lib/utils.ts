@@ -40,29 +40,28 @@ export function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-/** Backend origin for /uploads and other static paths (must match API/socket host in production). */
-export function getAssetOrigin(): string {
-  const env = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
-  if (env && env !== '/') return env.replace(/\/$/, '');
-  if (typeof window !== 'undefined') {
-    const h = window.location.hostname;
-    if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:3001';
-    const persisted = localStorage.getItem('nasscord-server-origin');
-    if (persisted) return persisted.replace(/\/$/, '');
-    return window.location.origin;
-  }
-  return '';
-}
+// Resolve relative file URLs (e.g. /uploads/file.jpg) to absolute when API is on another origin.
+// Set VITE_API_URL on Vercel to your Render API origin (no trailing slash). Redeploy after changing env.
+const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
-// Resolve relative file URLs (e.g. /uploads/file.jpg) to absolute when API is on another origin
 export function fileUrl(url: string | null | undefined): string {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) return url;
-  // Handle protocol-less absolute hosts that may exist in older persisted rows.
-  if (/^[a-z0-9.-]+\.[a-z]{2,}\/.+/i.test(url)) return `https://${url}`;
-  const normalized = url.startsWith('/') ? url : `/uploads/${url}`;
-  const base = getAssetOrigin();
-  return `${base}${normalized}`;
+  const clean = String(url).replace(/\\/g, '/').trim();
+
+  if (/^https?:\/\//i.test(clean) || clean.startsWith('blob:') || clean.startsWith('data:')) return clean;
+
+  // Protocol-less hosts (e.g. api.onrender.com/uploads/...) from older persisted values.
+  if (/^[a-z0-9.-]+\.[a-z]{2,}\/.+/i.test(clean)) return `https://${clean}`;
+
+  let path = clean;
+  if (!path.startsWith('/')) {
+    if (/^uploads\//i.test(path)) path = `/${path}`;
+    else if (path.includes('/')) path = `/${path}`;
+    else path = `/uploads/${path}`;
+  }
+
+  if (!API_BASE) return path;
+  return `${API_BASE}${path}`;
 }
 
 export function formatLastSeen(dateStr: string): string {

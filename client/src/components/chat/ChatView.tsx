@@ -176,13 +176,13 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     cross: { backgroundImage: 'radial-gradient(circle, transparent 8px, var(--color-border) 8px, var(--color-border) 9px, transparent 9px)', backgroundSize: '30px 30px' },
     waves: { backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 14px, var(--color-border) 14px, var(--color-border) 15px)' },
   };
-  const wallpaperStyle: React.CSSProperties = wallpaper.startsWith('custom:')
+  const wallpaperStyle = wallpaper.startsWith('custom:')
     ? {
-        backgroundImage: `url(${fileUrl(wallpaper.replace('custom:', ''))})`,
+        // Quoted url(...) so spaces/special chars in filenames do not break CSS parsing.
+        backgroundImage: `url(${JSON.stringify(fileUrl(wallpaper.replace('custom:', '')))})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
-        backgroundAttachment: 'local',
       }
     : (wallpaperStyles[wallpaper] || {});
   const bestStreak = Object.values(streaks).reduce((max, value) => Math.max(max, value), 0);
@@ -261,15 +261,8 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col min-w-0">
-          <div className="relative flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()}>
-            {Object.keys(wallpaperStyle).length > 0 && (
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 z-0"
-                style={wallpaperStyle}
-              />
-            )}
-            <div className={`relative z-10 mx-auto max-w-3xl ${compactMode ? 'space-y-0' : 'space-y-0.5'}`}>
+          <div className="flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()} style={wallpaperStyle}>
+            <div className={`mx-auto max-w-3xl ${compactMode ? 'space-y-0' : 'space-y-0.5'}`}>
               {filteredMessages.map((msg, i) => {
                 const prevMsg = filteredMessages[i - 1];
                 const showAvatar = compactMode ? false : (!prevMsg || prevMsg.senderId !== msg.senderId ||

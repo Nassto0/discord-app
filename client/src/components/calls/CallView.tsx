@@ -85,15 +85,6 @@ export function CallView() {
     return () => clearInterval(i);
   }, [status]);
 
-  // Re-apply saved user volume after WebRTC creates the output gain node (avoids silent remote until slider moves).
-  useEffect(() => {
-    if (status !== 'connected') return;
-    const v = Number(localStorage.getItem('call-user-volume'));
-    if (Number.isFinite(v)) {
-      window.dispatchEvent(new CustomEvent('audio-settings-changed', { detail: { type: 'output-volume', value: v } }));
-    }
-  }, [status]);
-
   useEffect(() => {
     if (!isScreenSharing) setScreenExpanded(false);
   }, [isScreenSharing]);
@@ -147,7 +138,7 @@ export function CallView() {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-black/95">
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
           {remoteStream?.getVideoTracks().some((t) => t.enabled) ? (
-            <video ref={remoteRef} autoPlay playsInline className="h-full w-full object-cover sm:object-contain" />
+            <video ref={remoteRef} autoPlay playsInline muted className="h-full w-full object-cover sm:object-contain" />
           ) : (
             <div className="flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-500">
               {remoteUser?.avatar ? (
@@ -306,7 +297,7 @@ export function CallView() {
             className={`fixed z-40 rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing
               ${remoteScreenExpanded ? 'inset-4 bottom-20 z-50' : 'bottom-16 right-4 w-80 h-48 hover:border-white/20'}`}
           >
-            <video ref={remoteScreenRef} autoPlay playsInline className="w-full h-full object-contain bg-zinc-950" />
+            <video ref={remoteScreenRef} autoPlay playsInline muted className="w-full h-full object-contain bg-zinc-950" />
             <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
             <div className="absolute top-3 right-3 flex gap-2">
               <button onClick={(e) => { e.stopPropagation(); setRemoteScreenExpanded(!remoteScreenExpanded); }}

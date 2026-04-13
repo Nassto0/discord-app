@@ -23,7 +23,18 @@ const ICE_CONFIG = buildIceConfig();
 
 let pc: RTCPeerConnection | null = null;
 let audioEl: HTMLAudioElement | null = null;
+/** Muted element playing raw remote WebRTC stream — keeps decode path alive for Web Audio (Chrome/Safari). */
+let rawAudioEl: HTMLAudioElement | null = null;
+/** Muted element playing raw local mic — same workaround for input AudioContext. */
+let localMicDummyEl: HTMLAudioElement | null = null;
+let inputGainNode: GainNode | null = null;
+let inputAudioCtx: AudioContext | null = null;
 let pendingCandidates: RTCIceCandidateInit[] = [];
+/** If remoteDescription never arrives, drop queued ICE candidates to avoid unbounded growth. */
+const PENDING_ICE_MAX = 200;
+const PENDING_ICE_STALE_MS = 10_000;
+let pendingIceStaleTimer: number | null = null;
+let resumeAudioGestureCleanup: (() => void) | null = null;
 let activeCallId: string | null = null;
 let activeTargetUserId: string | null = null;
 // Track the live remote stream to attach listeners only once
@@ -36,14 +47,99 @@ let outputGainNode: GainNode | null = null;
 let outputSourceNode: MediaStreamAudioSourceNode | null = null;
 let outputMediaDest: MediaStreamAudioDestinationNode | null = null;
 let audioSettingsListenerBound = false;
+let localMicSourceNode: MediaStreamAudioSourceNode | null = null;
+let localMicDestinationNode: MediaStreamAudioDestinationNode | null = null;
+
 function ensureAudioElement(): HTMLAudioElement {
   if (!audioEl) {
     audioEl = new Audio();
     audioEl.autoplay = true;
     (audioEl as any).playsInline = true;
     audioEl.muted = false;
+    audioEl.style.display = 'none';
+    document.body.appendChild(audioEl);
   }
   return audioEl;
+}
+
+function ensureRawAudioElement(): HTMLAudioElement {
+  if (!rawAudioEl) {
+    rawAudioEl = new Audio();
+    rawAudioEl.autoplay = true;
+    (rawAudioEl as any).playsInline = true;
+    rawAudioEl.muted = true;
+    rawAudioEl.style.display = 'none';
+    document.body.appendChild(rawAudioEl);
+  }
+  return rawAudioEl;
+}
+
+function ensureLocalMicDummyElement(stream: MediaStream): void {
+  const tracks = stream.getAudioTracks();
+  if (tracks.length === 0) return;
+  if (!localMicDummyEl) {
+    localMicDummyEl = new Audio();
+    localMicDummyEl.autoplay = true;
+    (localMicDummyEl as any).playsInline = true;
+    localMicDummyEl.muted = true;
+    localMicDummyEl.style.display = 'none';
+    document.body.appendChild(localMicDummyEl);
+  }
+  const audioOnly = new MediaStream(tracks);
+  if (localMicDummyEl.srcObject !== audioOnly) {
+    localMicDummyEl.srcObject = audioOnly;
+    localMicDummyEl.play().catch(() => {});
+  }
+}
+
+function cleanupLocalMicDummy() {
+  if (localMicDummyEl) {
+    localMicDummyEl.pause();
+    localMicDummyEl.srcObject = null;
+    localMicDummyEl.remove();
+    localMicDummyEl = null;
+  }
+}
+
+function clearPendingIceStaleTimer() {
+  if (pendingIceStaleTimer) {
+    clearTimeout(pendingIceStaleTimer);
+    pendingIceStaleTimer = null;
+  }
+}
+
+/** If signaling never delivers an offer/answer, remoteDescription stays null and ICE would queue forever. */
+function schedulePendingIceStaleFlush() {
+  clearPendingIceStaleTimer();
+  pendingIceStaleTimer = window.setTimeout(() => {
+    pendingIceStaleTimer = null;
+    if (!pc || pc.remoteDescription) return;
+    console.warn('[WebRTC] dropped stale pending ICE candidates (no remoteDescription after delay)');
+    pendingCandidates = [];
+  }, PENDING_ICE_STALE_MS);
+}
+
+function detachResumeAudioContextsOnGesture() {
+  resumeAudioGestureCleanup?.();
+  resumeAudioGestureCleanup = null;
+}
+
+/** Browsers often suspend AudioContext until a user gesture; resume on first tap/key during a call. */
+function attachResumeAudioContextsOnGesture() {
+  detachResumeAudioContextsOnGesture();
+  const resume = () => {
+    void outputAudioCtx?.resume();
+    void inputAudioCtx?.resume();
+    tryPlayAudioElement();
+    void rawAudioEl?.play().catch(() => {});
+    void localMicDummyEl?.play().catch(() => {});
+  };
+  document.addEventListener('pointerdown', resume, { capture: true });
+  document.addEventListener('keydown', resume, { capture: true });
+  resumeAudioGestureCleanup = () => {
+    document.removeEventListener('pointerdown', resume, { capture: true });
+    document.removeEventListener('keydown', resume, { capture: true });
+  };
 }
 
 function tryPlayAudioElement() {
@@ -73,7 +169,7 @@ async function switchInputDevice(deviceId: string) {
     const newStream = await navigator.mediaDevices.getUserMedia({
       audio: { deviceId: deviceId !== 'default' ? { exact: deviceId } : undefined },
     });
-    const newTrack = newStream.getAudioTracks()[0];
+    const newTrack = buildMicTrack(newStream);
     const sender = pc.getSenders().find((s) => s.track?.kind === 'audio');
     if (sender) {
       // Stop old track, replace with new
@@ -91,12 +187,9 @@ async function switchInputDevice(deviceId: string) {
 function onAudioSettingsChanged(e: Event) {
   const { type, key, value } = (e as CustomEvent).detail;
   if (type === 'output-volume') {
-    const n = Number(value);
-    const gain = Number.isFinite(n) ? Math.max(0, Math.min(3, n / 100)) : 1;
-    if (outputGainNode) outputGainNode.gain.value = gain;
-    if (audioEl) (audioEl as HTMLAudioElement).volume = 1;
+    if (outputGainNode) outputGainNode.gain.value = Math.max(0, Math.min(2, value / 100));
   } else if (type === 'input-volume') {
-    // Mic gain is applied via getUserMedia / device path only (no WebAudio send chain).
+    if (inputGainNode) inputGainNode.gain.value = Math.max(0, Math.min(2.5, value / 45));
   } else if (type === 'output-device') {
     // Switch output device on audio element (Chrome/Edge only)
     if (audioEl && typeof (audioEl as any).setSinkId === 'function') {
@@ -125,20 +218,62 @@ function applyAudioConstraintsInternal(constraints: MediaTrackConstraints) {
 function getSavedOutputVolume(): number {
   try {
     const saved = localStorage.getItem('call-user-volume');
-    if (saved === null || saved === '') return 1;
-    const n = Number(saved);
-    if (!Number.isFinite(n)) return 1;
-    return Math.max(0, Math.min(3, n / 100));
+    if (saved) return Math.max(0.1, Math.min(2, Number(saved) / 100));
+  } catch {}
+  return 1;
+}
+
+function getSavedInputVolume(): number {
+  try {
+    const settings = localStorage.getItem('audio-settings');
+    if (settings) {
+      const parsed = JSON.parse(settings);
+      const value = Number(parsed.inputVolume);
+      if (!Number.isNaN(value)) return Math.max(0, Math.min(2.5, value / 45));
+    }
+  } catch {}
+  return 1.6;
+}
+
+function cleanupInputAudioChain() {
+  cleanupLocalMicDummy();
+  if (localMicSourceNode) { try { localMicSourceNode.disconnect(); } catch {} localMicSourceNode = null; }
+  if (inputGainNode) { try { inputGainNode.disconnect(); } catch {} inputGainNode = null; }
+  localMicDestinationNode = null;
+  if (inputAudioCtx) { try { inputAudioCtx.close(); } catch {} inputAudioCtx = null; }
+}
+
+function buildMicTrack(stream: MediaStream): MediaStreamTrack {
+  const rawTrack = stream.getAudioTracks()[0];
+  if (!rawTrack) throw new Error('No microphone track available');
+  cleanupInputAudioChain();
+  try {
+    inputAudioCtx = new AudioContext();
+    localMicSourceNode = inputAudioCtx.createMediaStreamSource(stream);
+    inputGainNode = inputAudioCtx.createGain();
+    inputGainNode.gain.value = getSavedInputVolume();
+    localMicDestinationNode = inputAudioCtx.createMediaStreamDestination();
+    localMicSourceNode.connect(inputGainNode);
+    inputGainNode.connect(localMicDestinationNode);
+    if (inputAudioCtx.state === 'suspended') inputAudioCtx.resume().catch(() => {});
+    ensureLocalMicDummyElement(stream);
+    const processedTrack = localMicDestinationNode.stream.getAudioTracks()[0];
+    return processedTrack || rawTrack;
   } catch {
-    return 1;
+    cleanupInputAudioChain();
+    return rawTrack;
   }
 }
 
 function cleanupWebRTC() {
   isNegotiating = false;
+  clearPendingIceStaleTimer();
+  detachResumeAudioContextsOnGesture();
   if (pc) {
     pc.ontrack = null;
     pc.onicecandidate = null;
+    pc.oniceconnectionstatechange = null;
+    pc.onicegatheringstatechange = null;
     pc.onconnectionstatechange = null;
     pc.onnegotiationneeded = null;
     try { pc.close(); } catch {}
@@ -147,12 +282,21 @@ function cleanupWebRTC() {
   if (audioEl) {
     audioEl.pause();
     audioEl.srcObject = null;
+    audioEl.remove();
     audioEl = null;
   }
+  if (rawAudioEl) {
+    rawAudioEl.pause();
+    rawAudioEl.srcObject = null;
+    rawAudioEl.remove();
+    rawAudioEl = null;
+  }
+  cleanupLocalMicDummy();
   if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} outputSourceNode = null; }
   if (outputGainNode) { try { outputGainNode.disconnect(); } catch {} outputGainNode = null; }
   outputMediaDest = null;
   if (outputAudioCtx) { try { outputAudioCtx.close(); } catch {} outputAudioCtx = null; }
+  cleanupInputAudioChain();
   remoteBaseStream = null;
   pendingCandidates = [];
   activeTargetUserId = null;
@@ -248,35 +392,43 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     // Force a fresh object reference so Zustand detects the change
     pushRemoteStream(remote);
 
-    // Remote playback: GainNode supports "User Volume" > 100% without breaking the track.
-    // Never attach video ontrack events to the hidden audio element (that used to mute/break audio).
+    // Route audio through a GainNode to support volume boost beyond 100%
     if (event.track.kind === 'audio') {
-      const el = ensureAudioElement();
-      el.volume = 1;
-      try {
-        if (!outputAudioCtx) {
-          outputAudioCtx = new AudioContext();
-          outputGainNode = outputAudioCtx.createGain();
-          outputGainNode.gain.value = getSavedOutputVolume();
-          outputMediaDest = outputAudioCtx.createMediaStreamDestination();
-          outputGainNode.connect(outputMediaDest);
-        }
-        if (outputAudioCtx.state === 'suspended') outputAudioCtx.resume().catch(() => {});
-        if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} }
-        outputSourceNode = outputAudioCtx.createMediaStreamSource(remote);
-        outputSourceNode.connect(outputGainNode!);
+      // Muted element on raw remote stream keeps WebRTC decode active for Web Audio (Chrome/Safari).
+      const rawEl = ensureRawAudioElement();
+      if (rawEl.srcObject !== remote) {
+        rawEl.srcObject = remote;
+        rawEl.play().catch(() => {});
+      }
 
-        if (el.srcObject !== outputMediaDest!.stream) {
-          el.srcObject = outputMediaDest!.stream;
-        }
+      if (!outputAudioCtx) {
+        outputAudioCtx = new AudioContext();
+        outputGainNode = outputAudioCtx.createGain();
+        outputGainNode.gain.value = getSavedOutputVolume();
+        outputMediaDest = outputAudioCtx.createMediaStreamDestination();
+        outputGainNode.connect(outputMediaDest);
+      }
+      if (outputAudioCtx.state === 'suspended') outputAudioCtx.resume().catch(() => {});
+      if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} }
+
+      const audioOnlyStream = new MediaStream([event.track]);
+      outputSourceNode = outputAudioCtx.createMediaStreamSource(audioOnlyStream);
+      outputSourceNode.connect(outputGainNode!);
+
+      const el = ensureAudioElement();
+      if (el.srcObject !== outputMediaDest!.stream) {
+        el.srcObject = outputMediaDest!.stream;
         tryPlayAudioElement();
-      } catch (err) {
-        console.error('[WebRTC] remote audio graph failed, using direct stream:', err);
-        if (outputSourceNode) {
-          try { outputSourceNode.disconnect(); } catch {}
-          outputSourceNode = null;
-        }
-        if (el.srcObject !== remote) el.srcObject = remote;
+      }
+    } else if (remote.getAudioTracks().length > 0) {
+      const rawEl = ensureRawAudioElement();
+      if (rawEl.srcObject !== remote) {
+        rawEl.srcObject = remote;
+        rawEl.play().catch(() => {});
+      }
+      const el = ensureAudioElement();
+      if (el.srcObject !== remote) {
+        el.srcObject = remote;
         tryPlayAudioElement();
       }
     }
@@ -297,15 +449,18 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     console.log('[WebRTC] connection state:', state);
     if (state === 'connected') {
       useCallStore.getState().setConnected();
-      if (outputGainNode) outputGainNode.gain.value = getSavedOutputVolume();
     }
   };
 
   pc.oniceconnectionstatechange = () => {
-    console.log('[WebRTC] ICE state:', pc?.iceConnectionState);
+    console.log('[WebRTC] ICE connection:', pc?.iceConnectionState);
     if (pc?.iceConnectionState === 'failed') {
-      console.error('[WebRTC] ICE failed — check STUN reachability and candidate exchange');
+      console.error('[WebRTC] ICE failed — add TURN (VITE_TURN_*) if both peers are behind symmetric NAT / restrictive networks');
     }
+  };
+
+  pc.onicegatheringstatechange = () => {
+    console.log('[WebRTC] ICE gathering:', pc?.iceGatheringState);
   };
 
   // Helper: process an incoming offer and send an answer
@@ -327,6 +482,7 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
 
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
       isNegotiating = false;
+      clearPendingIceStaleTimer();
 
       for (const c of pendingCandidates) {
         await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
@@ -370,6 +526,7 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
       isNegotiating = false;
+      clearPendingIceStaleTimer();
       for (const c of pendingCandidates) {
         await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
       }
@@ -384,6 +541,10 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     if (!pc) return;
     if (!pc.remoteDescription) {
       pendingCandidates.push(data.candidate);
+      if (pendingCandidates.length > PENDING_ICE_MAX) {
+        pendingCandidates.splice(0, pendingCandidates.length - PENDING_ICE_MAX);
+      }
+      schedulePendingIceStaleFlush();
       return;
     }
     try {
@@ -406,34 +567,28 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     } catch {}
   }
 
-  const audioConstraints: MediaTrackConstraints = {
-    deviceId: inputDeviceId ? { ideal: inputDeviceId } : undefined,
-    echoCancellation: echoCancel,
-    noiseSuppression: noiseSuppress,
-    autoGainControl: autoGain,
-  };
-
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints,
+      audio: {
+        deviceId: inputDeviceId ? { ideal: inputDeviceId } : undefined,
+        echoCancellation: echoCancel,
+        noiseSuppression: noiseSuppress,
+        autoGainControl: autoGain,
+        sampleRate: 48000,
+        sampleSize: 16,
+        channelCount: 2,
+      },
       video: store.callType === 'video',
     });
-  } catch (firstErr: any) {
-    console.warn('[WebRTC] getUserMedia with constraints failed, retrying minimal audio:', firstErr);
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: store.callType === 'video',
-      });
-    } catch (err: any) {
-      console.error('[WebRTC] getUserMedia failed:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        alert('Microphone access is required for calls. Please allow microphone access in your browser settings and try again.');
-      }
-      hangup();
-      return;
+  } catch (err: any) {
+    console.error('[WebRTC] getUserMedia failed:', err);
+    // If permission was denied or dismissed, don't silently hang up — let the user know
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      alert('Microphone access is required for calls. Please allow microphone access in your browser settings and try again.');
     }
+    hangup();
+    return;
   }
 
   if (useCallStore.getState().callId !== callId) {
@@ -441,9 +596,12 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     return;
   }
 
-  // Send the raw capture track (WebAudio-processed mic breaks encoding on some mobile browsers).
-  store.setLocalStream(stream);
-  stream.getTracks().forEach((track) => pc!.addTrack(track, stream));
+  const micTrack = buildMicTrack(stream);
+  const outboundStream = new MediaStream([micTrack, ...stream.getVideoTracks()]);
+  store.setLocalStream(outboundStream);
+  // addTrack fires onnegotiationneeded but isSetupComplete is still false,
+  // so the guard at the top of the handler prevents a spurious offer
+  outboundStream.getTracks().forEach((track) => pc!.addTrack(track, outboundStream));
   localStreamReady = true;
 
   if (isInitiator) {
@@ -469,6 +627,8 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
 
   // From this point on, onnegotiationneeded is live for screen share renegotiation
   isSetupComplete = true;
+
+  attachResumeAudioContextsOnGesture();
 }
 
 export async function toggleScreenShare() {

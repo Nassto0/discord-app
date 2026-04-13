@@ -1,7 +1,7 @@
 // In dev, Vite proxies /api to localhost:3001 so no base is needed.
 // In production, set VITE_API_URL to the server origin (e.g. https://your-server.onrender.com)
-const API_URL = import.meta.env.VITE_API_URL || '';
-const API_BASE = `${API_URL}/api`;
+const API_ORIGIN = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const API_BASE = API_ORIGIN ? `${API_ORIGIN}/api` : '/api';
 
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

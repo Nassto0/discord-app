@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useCallStore } from '@/stores/callStore';
 import { acceptIncoming, rejectIncoming, ensureMediaPermissions } from '@/hooks/useWebRTC';
 import { getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { Phone, PhoneOff, Video } from 'lucide-react';
+import { Phone, PhoneOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sounds } from '@/lib/sounds';
 

@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { useMediaRecorder } from '@/hooks/useMediaRecorder';
 import { formatDuration } from '@/lib/utils';
 import { sounds } from '@/lib/sounds';
-import { Send, Mic, X, ImagePlus, Smile, PlusCircle } from 'lucide-react';
+import { Send, Mic, X, Smile, PlusCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToastStore } from '@/stores/toastStore';
 

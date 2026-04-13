@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { X, MessageCircle, Link2, Shield, Star, Zap, Award, Heart, Crown, Flame, Globe, Coffee } from 'lucide-react';
+import { X, MessageCircle, Shield, Star, Zap, Award, Heart, Crown, Flame, Globe, Coffee } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getSocket } from '@/hooks/useSocket';
 
@@ -150,7 +150,7 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
           onClick={(e) => e.stopPropagation()}
           className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-          <PanelContent user={user} isMe={isMe} isOnline={isOnline} displayPresence={displayPresence}
+          <PanelContent user={user} isMe={isMe} displayPresence={displayPresence}
             badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} toggleFollow={toggleFollow} toggleBlock={toggleBlock} updatingRelation={updatingRelation} />
         </motion.div>
       </div>
@@ -160,14 +160,14 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
   return (
     <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.2 }}
       className="absolute right-0 top-0 bottom-0 z-20 w-80 border-l border-border bg-card flex flex-col overflow-y-auto">
-      <PanelContent user={user} isMe={isMe} isOnline={isOnline} displayPresence={displayPresence}
+      <PanelContent user={user} isMe={isMe} displayPresence={displayPresence}
         badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} toggleFollow={toggleFollow} toggleBlock={toggleBlock} updatingRelation={updatingRelation} />
     </motion.div>
   );
 }
 
-function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, onClose, startDm, dmStreak, toggleFollow, toggleBlock, updatingRelation }: {
-  user: any; isMe: boolean; isOnline: boolean; displayPresence: string;
+function PanelContent({ user, isMe, displayPresence, badges, links, onClose, startDm, dmStreak, toggleFollow, toggleBlock, updatingRelation }: {
+  user: any; isMe: boolean; displayPresence: string;
   badges: string[]; links: string[]; onClose: () => void; startDm: () => void; dmStreak: number;
   toggleFollow: () => void; toggleBlock: () => void; updatingRelation: boolean;
 }) {
