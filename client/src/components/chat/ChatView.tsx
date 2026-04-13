@@ -12,6 +12,7 @@ import { useCallStore } from '@/stores/callStore';
 import { ensureMediaPermissions } from '@/hooks/useWebRTC';
 import { AnimatePresence } from 'framer-motion';
 import { api } from '@/lib/api';
+import { useToastStore } from '@/stores/toastStore';
 
 interface ChatViewProps {
   onBack: () => void;
@@ -19,6 +20,7 @@ interface ChatViewProps {
 }
 
 export function ChatView({ onBack, onUserClick }: ChatViewProps) {
+  const pushToast = useToastStore((s) => s.push);
   const user = useAuthStore((s) => s.user);
   const { activeConversationId, conversations, messages, typingUsers, onlineUsers, loadMessages, clearUnread } = useChatStore();
   const callStatus = useCallStore((s) => s.status);
@@ -161,8 +163,10 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     try {
       const { url } = await api.uploads.upload(file);
       saveConversationWallpaper(`custom:${url}`);
+      pushToast('Wallpaper updated', 'success');
     } catch (error) {
       console.error('Wallpaper upload error:', error);
+      pushToast((error as Error)?.message || 'Wallpaper upload failed. Check connection and try again.', 'error');
     } finally {
       setUploadingWallpaper(false);
       e.target.value = '';

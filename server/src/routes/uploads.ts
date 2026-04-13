@@ -19,6 +19,13 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+/** Public URL for uploaded files. Render sets RENDER_EXTERNAL_URL; you can override with PUBLIC_BASE_URL. */
+function publicUploadUrl(filename: string): string {
+  const base = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, '');
+  if (!base) return `/uploads/${filename}`;
+  return `${base}/uploads/${filename}`;
+}
+
 export const uploadRouter = Router();
 
 uploadRouter.post('/', authenticateToken, upload.single('file'), (req: AuthRequest, res: Response) => {
@@ -26,7 +33,7 @@ uploadRouter.post('/', authenticateToken, upload.single('file'), (req: AuthReque
     res.status(400).json({ message: 'No file uploaded' });
     return;
   }
-  res.json({ url: `/uploads/${req.file.filename}`, filename: req.file.filename, mimetype: req.file.mimetype });
+  res.json({ url: publicUploadUrl(req.file.filename), filename: req.file.filename, mimetype: req.file.mimetype });
 });
 
 uploadRouter.post('/avatar', authenticateToken, upload.single('avatar'), (req: AuthRequest, res: Response) => {
@@ -34,5 +41,5 @@ uploadRouter.post('/avatar', authenticateToken, upload.single('avatar'), (req: A
     res.status(400).json({ message: 'No file uploaded' });
     return;
   }
-  res.json({ url: `/uploads/${req.file.filename}` });
+  res.json({ url: publicUploadUrl(req.file.filename) });
 });
