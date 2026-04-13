@@ -86,6 +86,7 @@ export const api = {
     create: (data: { mediaUrl: string; caption?: string }) =>
       request<any>('/stories', { method: 'POST', body: JSON.stringify(data) }),
     view: (id: string) => request<any>(`/stories/${id}/view`, { method: 'POST' }),
+    delete: (id: string) => request<any>(`/stories/${id}`, { method: 'DELETE' }),
   },
   admin: {
     stats: () => request<any>('/admin/stats'),

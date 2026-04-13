@@ -193,16 +193,18 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
           {conv.type === 'dm' && <div className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface ${isOnline ? 'bg-emerald-500' : 'bg-zinc-500'}`} />}
         </button>
         <div className="min-w-0 flex-1">
-          <button onClick={() => isGroup ? setShowGroupPanel(!showGroupPanel) : otherUser && onUserClick(otherUser.id)}
-            className="text-sm font-bold text-foreground hover:underline truncate block">{displayName}</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => isGroup ? setShowGroupPanel(!showGroupPanel) : otherUser && onUserClick(otherUser.id)}
+              className="text-sm font-bold text-foreground hover:underline truncate block">{displayName}</button>
+            {!isGroup && bestStreak > 0 && (
+              <span className="flex items-center gap-1 text-[11px] font-semibold text-orange-400">
+                <Flame className="h-3 w-3" /> {bestStreak}
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-muted-foreground">
             {isGroup ? `${memberCount} members, ${onlineMemberCount} online` : isOnline ? 'Online' : otherUser?.lastSeen ? formatLastSeen(otherUser.lastSeen) : 'Offline'}
           </p>
-          {!isGroup && bestStreak > 0 && (
-            <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-orange-400">
-              <Flame className="h-3 w-3" /> {bestStreak}
-            </p>
-          )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <input ref={wallpaperInputRef} type="file" accept="image/*" className="hidden" onChange={handleWallpaperUpload} />

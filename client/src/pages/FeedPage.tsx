@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { getInitials, getAvatarColor, formatTime, fileUrl } from '@/lib/utils';
-import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag, Plus, X } from 'lucide-react';
+import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag, Plus, X, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSocket } from '@/hooks/useSocket';
 import { showNotification, sounds } from '@/lib/sounds';
@@ -37,6 +37,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const [storyGroups, setStoryGroups] = useState<any[]>([]);
   const [storyModal, setStoryModal] = useState<{ user: any; stories: any[]; index: number } | null>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
+  const [storyDraft, setStoryDraft] = useState<{ file: File; previewUrl: string; caption: string; cropImage: boolean } | null>(null);
 
   useEffect(() => {
     loadPosts();
@@ -227,17 +228,49 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const handleStoryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setStoryDraft({ file, previewUrl: URL.createObjectURL(file), caption: '', cropImage: false });
+    e.target.value = '';
+  };
+
+  const publishStory = async () => {
+    if (!storyDraft) return;
     setUploading(true);
     try {
-      const { url } = await api.uploads.upload(file);
-      await api.stories.create({ mediaUrl: url });
+      let uploadFile = storyDraft.file;
+      if (storyDraft.cropImage && storyDraft.file.type.startsWith('image/')) {
+        const img = new Image();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsDataURL(storyDraft.file);
+        });
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = reject;
+          img.src = dataUrl;
+        });
+        const size = Math.min(img.width, img.height);
+        const sx = Math.floor((img.width - size) / 2);
+        const sy = Math.floor((img.height - size) / 2);
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (blob) uploadFile = new File([blob], `story-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      }
+      const { url } = await api.uploads.upload(uploadFile);
+      await api.stories.create({ mediaUrl: url, caption: storyDraft.caption.trim() || undefined });
       setStoryGroups(await api.stories.list());
       pushToast('Story published for 24 hours.', 'success');
+      URL.revokeObjectURL(storyDraft.previewUrl);
+      setStoryDraft(null);
     } catch (err) {
       pushToast((err as Error).message || 'Could not publish story', 'error');
     } finally {
       setUploading(false);
-      e.target.value = '';
     }
   };
 
@@ -247,6 +280,23 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
     if (story && !story.seen) {
       await api.stories.view(story.id).catch(() => {});
       setStoryGroups(await api.stories.list().catch(() => storyGroups));
+    }
+  };
+
+  const deleteCurrentStory = async () => {
+    if (!storyModal || storyModal.user.id !== user?.id) return;
+    const story = storyModal.stories[storyModal.index];
+    if (!story) return;
+    try {
+      await api.stories.delete(story.id);
+      const updated = await api.stories.list();
+      setStoryGroups(updated);
+      const myGroup = updated.find((g) => g.user.id === storyModal.user.id);
+      if (!myGroup || myGroup.stories.length === 0) setStoryModal(null);
+      else setStoryModal({ user: myGroup.user, stories: myGroup.stories, index: Math.min(storyModal.index, myGroup.stories.length - 1) });
+      pushToast('Story deleted.', 'success');
+    } catch (err) {
+      pushToast((err as Error).message || 'Could not delete story', 'error');
     }
   };
 
@@ -284,7 +334,8 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 py-5 space-y-4">
           {(() => {
-            const online = allUsers.filter((u) => u.id !== user?.id && onlineUsers.has(u.id));
+            const storyUserIds = new Set(storyGroups.map((g) => g.user.id));
+            const online = allUsers.filter((u) => u.id !== user?.id && onlineUsers.has(u.id) && !storyUserIds.has(u.id));
             const hasStories = storyGroups.length > 0;
             if (online.length === 0 && !hasStories) return null;
             return (
@@ -530,20 +581,55 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
           </div>
         </div>
       )}
+      {storyDraft && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-4">
+            <p className="mb-2 text-sm font-semibold text-foreground">Story preview</p>
+            <div className="mb-3 overflow-hidden rounded-xl border border-border">
+              {storyDraft.file.type.startsWith('video/') ? (
+                <video src={storyDraft.previewUrl} controls className="max-h-[55vh] w-full bg-black object-contain" />
+              ) : (
+                <img src={storyDraft.previewUrl} alt="" className={`max-h-[55vh] w-full bg-black object-contain ${storyDraft.cropImage ? 'aspect-square object-cover' : ''}`} />
+              )}
+            </div>
+            <input value={storyDraft.caption} onChange={(e) => setStoryDraft((s) => s ? ({ ...s, caption: e.target.value }) : s)}
+              placeholder="Add a caption (optional)" className="mb-2 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none" />
+            {!storyDraft.file.type.startsWith('video/') && (
+              <button onClick={() => setStoryDraft((s) => s ? ({ ...s, cropImage: !s.cropImage }) : s)}
+                className="mb-3 flex items-center gap-1 rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground">
+                <Scissors className="h-3.5 w-3.5" /> {storyDraft.cropImage ? 'Crop enabled (square)' : 'Enable square crop'}
+              </button>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { URL.revokeObjectURL(storyDraft.previewUrl); setStoryDraft(null); }} className="rounded-lg bg-secondary px-3 py-1.5 text-sm">Cancel</button>
+              <button onClick={publishStory} disabled={uploading} className="rounded-lg bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-50">Post story</button>
+            </div>
+          </div>
+        </div>
+      )}
       {storyModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4">
           <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border bg-black">
             <button onClick={() => setStoryModal(null)} className="absolute right-3 top-3 z-10 rounded-full bg-black/50 p-1.5 text-white">
               <X className="h-4 w-4" />
             </button>
-            <img
-              src={fileUrl(storyModal.stories[storyModal.index]?.mediaUrl)}
-              alt=""
-              className="h-[70vh] w-full object-cover"
-            />
+            {/\.(mp4|webm|ogg)$/i.test(storyModal.stories[storyModal.index]?.mediaUrl || '') ? (
+              <video src={fileUrl(storyModal.stories[storyModal.index]?.mediaUrl)} className="h-[70vh] w-full object-contain" autoPlay controls />
+            ) : (
+              <img
+                src={fileUrl(storyModal.stories[storyModal.index]?.mediaUrl)}
+                alt=""
+                className="h-[70vh] w-full object-cover"
+              />
+            )}
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white">
               <p className="text-sm font-semibold">{storyModal.user.username}</p>
               {storyModal.stories[storyModal.index]?.caption && <p className="text-xs opacity-90">{storyModal.stories[storyModal.index]?.caption}</p>}
+              {storyModal.user.id === user?.id && (
+                <button onClick={deleteCurrentStory} className="mt-2 flex items-center gap-1 rounded-md bg-red-500/70 px-2 py-1 text-xs">
+                  <Trash2 className="h-3.5 w-3.5" /> Delete story
+                </button>
+              )}
             </div>
             <div className="absolute inset-y-0 left-0 w-1/2" onClick={() => setStoryModal((s) => s ? ({ ...s, index: Math.max(0, s.index - 1) }) : s)} />
             <div className="absolute inset-y-0 right-0 w-1/2" onClick={() => setStoryModal((s) => s ? ({ ...s, index: Math.min(s.stories.length - 1, s.index + 1) }) : s)} />

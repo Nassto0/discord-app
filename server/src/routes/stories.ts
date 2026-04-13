@@ -96,3 +96,23 @@ storyRouter.post('/:id/view', authenticateToken, async (req: AuthRequest, res: R
   }
 });
 
+storyRouter.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const storyId = String(req.params.id);
+    const story = await prisma.story.findUnique({ where: { id: storyId } });
+    if (!story) {
+      res.status(404).json({ message: 'Story not found' });
+      return;
+    }
+    if (story.userId !== req.userId) {
+      res.status(403).json({ message: 'Not allowed' });
+      return;
+    }
+    await prisma.story.delete({ where: { id: storyId } });
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Delete story error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+

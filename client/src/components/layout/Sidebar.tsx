@@ -30,6 +30,20 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
   });
 
   useEffect(() => {
+    const ids = new Set(conversations.map((c) => c.id));
+    const cleanedMuted = mutedConversations.filter((id) => ids.has(id));
+    if (cleanedMuted.length !== mutedConversations.length) {
+      setMutedConversations(cleanedMuted);
+      localStorage.setItem('muted-conversations', JSON.stringify(cleanedMuted));
+    }
+    const cleanedPinned = pinnedConversations.filter((id) => ids.has(id));
+    if (cleanedPinned.length !== pinnedConversations.length) {
+      setPinnedConversations(cleanedPinned);
+      localStorage.setItem('pinned-conversations', JSON.stringify(cleanedPinned));
+    }
+  }, [conversations]);
+
+  useEffect(() => {
     if (!contextMenu) return;
     const handler = () => setContextMenu(null);
     document.addEventListener('click', handler);
@@ -66,6 +80,15 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
       : [...mutedConversations, id];
     setMutedConversations(next);
     localStorage.setItem('muted-conversations', JSON.stringify(next));
+  };
+
+  const removeFromPreferences = (id: string) => {
+    const nextMuted = mutedConversations.filter((x) => x !== id);
+    const nextPinned = pinnedConversations.filter((x) => x !== id);
+    setMutedConversations(nextMuted);
+    setPinnedConversations(nextPinned);
+    localStorage.setItem('muted-conversations', JSON.stringify(nextMuted));
+    localStorage.setItem('pinned-conversations', JSON.stringify(nextPinned));
   };
 
   const handleConvContext = (e: React.MouseEvent, convId: string) => {
@@ -293,7 +316,7 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
               <VolumeX className="h-4 w-4 text-muted-foreground" /> {mutedConversations.includes(contextMenu.id) ? 'Unmute Chat' : 'Mute Chat'}
             </button>
             <div className="h-px bg-border my-1 mx-2" />
-            <button onClick={() => { removeConversation(contextMenu.id); setContextMenu(null); }}
+            <button onClick={() => { removeFromPreferences(contextMenu.id); removeConversation(contextMenu.id); setContextMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-red-400 hover:bg-red-500/10 rounded-md mx-1" style={{ width: 'calc(100% - 8px)' }}>
               <X className="h-4 w-4" /> Close DM
             </button>
