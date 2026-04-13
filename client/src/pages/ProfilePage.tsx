@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
 import { getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { ArrowLeft, Camera, Check, ImagePlus, User, Mic, Palette, Plus, X, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Camera, Check, ImagePlus, User, Mic, Palette, Plus, X, Link as LinkIcon, ZoomIn, ZoomOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AudioSettings } from '@/components/settings/AudioSettings';
 import { themes, applyTheme, loadSavedTheme } from '@/lib/themes';
@@ -283,6 +283,8 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
                     </div>
                   </div>
 
+                  <ZoomSetting />
+
                   <div>
                     <label className="mb-4 block text-xs font-bold uppercase tracking-wider text-muted-foreground">App Theme</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -327,6 +329,45 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function ZoomSetting() {
+  const [zoom, setZoom] = useState(() => {
+    const saved = localStorage.getItem('app-zoom');
+    return saved ? Number(saved) : 100;
+  });
+
+  const applyZoom = (val: number) => {
+    setZoom(val);
+    localStorage.setItem('app-zoom', String(val));
+    document.documentElement.style.fontSize = `${val}%`;
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('app-zoom');
+    if (saved) document.documentElement.style.fontSize = `${saved}%`;
+  }, []);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/30 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Interface Zoom</p>
+          <p className="text-xs text-muted-foreground mt-1">Adjust the size of text and UI elements</p>
+        </div>
+        <span className="text-xs font-medium text-foreground bg-secondary px-2 py-0.5 rounded-md">{zoom}%</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <ZoomOut className="h-4 w-4 text-muted-foreground shrink-0" />
+        <input type="range" min={75} max={150} step={5} value={zoom} onChange={(e) => applyZoom(Number(e.target.value))}
+          className="w-full accent-primary h-2 rounded-full appearance-none bg-secondary cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md" />
+        <ZoomIn className="h-4 w-4 text-muted-foreground shrink-0" />
+      </div>
+      <div className="flex justify-center mt-3">
+        <button onClick={() => applyZoom(100)} className="text-xs text-muted-foreground hover:text-primary transition-colors">Reset to 100%</button>
+      </div>
+    </div>
   );
 }
 

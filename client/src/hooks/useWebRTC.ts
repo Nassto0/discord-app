@@ -30,6 +30,8 @@ let activeCallId: string | null = null;
 let activeTargetUserId: string | null = null;
 // Track the live remote stream to attach listeners only once
 let remoteBaseStream: MediaStream | null = null;
+// Prevent concurrent renegotiations from causing offer/answer spirals
+let isNegotiating = false;
 
 // Mute the audio element whenever isDeafened toggles in the store
 useCallStore.subscribe((state) => {
@@ -104,6 +106,7 @@ function getSavedOutputVolume(): number {
 }
 
 function cleanupWebRTC() {
+  isNegotiating = false;
   if (pc) {
     pc.ontrack = null;
     pc.onicecandidate = null;
@@ -171,18 +174,21 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
   // Guard: only renegotiate after initial setup is done, preventing the receiver
   // from accidentally sending an unsolicited offer when addTrack() is called
   pc.onnegotiationneeded = async () => {
-    if (!isSetupComplete || !pc || pc.signalingState !== 'stable') return;
+    if (!isSetupComplete || !pc || pc.signalingState !== 'stable' || isNegotiating) return;
     const tid = activeTargetUserId;
     const cid = activeCallId;
     if (!tid || !cid) return;
+    isNegotiating = true;
     console.log('[WebRTC] renegotiating...');
     try {
       const offer = await pc.createOffer();
+      if (pc.signalingState !== 'stable') { isNegotiating = false; return; }
       await pc.setLocalDescription(offer);
       getSocket()?.emit('webrtc:offer', { callId: cid, targetUserId: tid, sdp: offer });
     } catch (err) {
       console.error('[WebRTC] renegotiation error:', err);
     }
+    // isNegotiating cleared when we receive the answer
   };
 
   // Helper: push a new MediaStream snapshot into Zustand so React re-renders
@@ -254,14 +260,20 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     if (!pc || pc.signalingState === 'closed') return;
     console.log('[WebRTC] processing offer');
     try {
-      if (pc.signalingState !== 'stable') {
-        await Promise.all([
-          pc.setLocalDescription({ type: 'rollback' }),
-          pc.setRemoteDescription(new RTCSessionDescription(data.sdp)),
-        ]);
-      } else {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      // Handle glare: if we're also trying to send an offer, roll back ours
+      // Polite peer (non-initiator) always yields to incoming offers
+      if (pc.signalingState === 'have-local-offer') {
+        if (isInitiator) {
+          // We're the initiator and we already sent an offer — ignore theirs
+          console.log('[WebRTC] ignoring offer (we are initiator with pending offer)');
+          return;
+        }
+        // We're not initiator — roll back our offer and accept theirs
+        await pc.setLocalDescription({ type: 'rollback' });
       }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      isNegotiating = false;
 
       for (const c of pendingCandidates) {
         await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
@@ -271,7 +283,6 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      // FIX: use the scoped targetUserId variable — data.fromUserId may be undefined
       socket.emit('webrtc:answer', {
         callId: data.callId,
         targetUserId,
@@ -280,6 +291,7 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
       console.log('[WebRTC] sent answer');
     } catch (e) {
       console.error('[WebRTC] offer handling error:', e);
+      isNegotiating = false;
     }
   };
 
@@ -296,15 +308,22 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
 
   socket.on('webrtc:answer', async (data) => {
     if (!pc || pc.signalingState === 'closed') return;
+    // Only accept answers when we're waiting for one
+    if (pc.signalingState !== 'have-local-offer') {
+      console.log('[WebRTC] ignoring answer (not in have-local-offer state)');
+      return;
+    }
     console.log('[WebRTC] received answer');
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      isNegotiating = false;
       for (const c of pendingCandidates) {
         await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
       }
       pendingCandidates = [];
     } catch (e) {
       console.error('[WebRTC] answer handling error:', e);
+      isNegotiating = false;
     }
   });
 

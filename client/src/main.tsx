@@ -7,6 +7,10 @@ import './index.css';
 
 loadSavedTheme();
 
+// Apply saved zoom level
+const savedZoom = localStorage.getItem('app-zoom');
+if (savedZoom) document.documentElement.style.fontSize = `${savedZoom}%`;
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

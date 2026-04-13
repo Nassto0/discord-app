@@ -82,6 +82,16 @@ textarea.input-field {
   padding-bottom: 0.5rem;
 }
 
+/* PWA standalone mode: respect safe area insets (notch, home indicator) */
+@media all and (display-mode: standalone) {
+  html {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 /* Mobile safe areas and touch optimization */
 @media (max-width: 768px) {
   .safe-bottom {
