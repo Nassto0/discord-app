@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatTime, getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download, Shield } from 'lucide-react';
+import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download, Shield, VolumeX } from 'lucide-react';
 import { NewConversationDialog } from '@/components/chat/NewConversationDialog';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -44,6 +44,12 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
     const bPinned = pinnedConversations.includes(b.id) ? 1 : 0;
     if (aPinned !== bPinned) return bPinned - aPinned;
     return 0;
+  });
+
+  const muted = conversations.filter((c) => {
+    if (!mutedConversations.includes(c.id)) return false;
+    const name = c.type === 'dm' ? c.members.find((m) => m.userId !== user?.id)?.user.username || '' : c.name || '';
+    return name.toLowerCase().includes(search.toLowerCase());
   });
 
   const togglePinned = (id: string) => {
@@ -184,6 +190,40 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
                 {!search && <button onClick={() => setShowNewConv(true)} className="mt-2 text-xs font-medium text-primary hover:underline">Start a conversation</button>}
               </div>
             )}
+
+            {muted.length > 0 && (
+              <>
+                <p className="px-2 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  Muted — {muted.length}
+                </p>
+                {muted.map((conv) => {
+                  const otherUser = conv.type === 'dm' ? conv.members.find((m) => m.userId !== user?.id)?.user : null;
+                  const displayName = conv.type === 'dm' ? otherUser?.username || 'Unknown' : conv.name || 'Group Chat';
+                  const avatar = conv.type === 'dm' ? otherUser?.avatar : conv.avatar;
+                  return (
+                    <div key={`muted-${conv.id}`}
+                      className="mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-foreground/60 hover:bg-secondary/60">
+                      <div className="relative shrink-0">
+                        {avatar ? <img src={fileUrl(avatar)} alt="" className="h-8 w-8 rounded-full object-cover opacity-80" /> : (
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-full ${getAvatarColor(displayName)} text-xs font-semibold text-white opacity-80`}>
+                            {conv.type === 'group' ? <Users className="h-3.5 w-3.5" /> : getInitials(displayName)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{displayName}</p>
+                        <p className="text-[10px] text-muted-foreground">Muted conversation</p>
+                      </div>
+                      <button
+                        onClick={() => toggleMuted(conv.id)}
+                        className="flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-[10px] font-semibold text-foreground hover:bg-primary/15 hover:text-primary">
+                        <VolumeX className="h-3 w-3" /> Unmute
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </>
         ) : (
           <div className="flex flex-col items-center py-12 text-center">
@@ -250,7 +290,7 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
             </button>
             <button onClick={() => { toggleMuted(contextMenu.id); setContextMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary rounded-md mx-1" style={{ width: 'calc(100% - 8px)' }}>
-              <Search className="h-4 w-4 text-muted-foreground" /> {mutedConversations.includes(contextMenu.id) ? 'Unmute Chat' : 'Mute Chat'}
+              <VolumeX className="h-4 w-4 text-muted-foreground" /> {mutedConversations.includes(contextMenu.id) ? 'Unmute Chat' : 'Mute Chat'}
             </button>
             <div className="h-px bg-border my-1 mx-2" />
             <button onClick={() => { removeConversation(contextMenu.id); setContextMenu(null); }}
