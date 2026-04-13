@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String   @unique
+  passwordHash String
+  avatar       String?
+  banner       String?
+  bio          String?
+  status       String   @default("offline")
+  presence     String   @default("online")
+  customStatus String?
+  badges       String   @default("[]")
+  links        String   @default("[]")
+  lastSeen     DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  sentMessages         Message[]            @relation("sender")
+  conversations        ConversationMember[]
+  createdConversations Conversation[]       @relation("creator")
+  startedCalls         CallSession[]        @relation("callStarter")
+  posts                Post[]               @relation("postAuthor")
+  postLikes            PostLike[]
+  postComments         PostComment[]        @relation("commentAuthor")
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  authorId  String
+  content   String
+  imageUrl  String?
+  likes     PostLike[]
+  comments  PostComment[]
+  createdAt DateTime @default(now())
+
+  author User @relation("postAuthor", fields: [authorId], references: [id])
+
+  @@index([createdAt])
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation("commentAuthor", fields: [authorId], references: [id])
+}
+
+model PostLike {
+  id     String @id @default(uuid())
+  postId String
+  userId String
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  type      String
+  name      String?
+  avatar    String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  creator  User                 @relation("creator", fields: [createdBy], references: [id])
+  members  ConversationMember[]
+  messages Message[]
+  calls    CallSession[]
+}
+
+model ConversationMember {
+  id             String   @id @default(uuid())
+  conversationId String
+  userId         String
+  role           String   @default("member")
+  joinedAt       DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String?
+  type           String   @default("text")
+  fileUrl        String?
+  fileDuration   Float?
+  replyToId      String?
+  readBy         String   @default("[]")
+  reactions      String   @default("{}")
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("sender", fields: [senderId], references: [id])
+  replyTo      Message?     @relation("replies", fields: [replyToId], references: [id])
+  replies      Message[]    @relation("replies")
+
+  @@index([conversationId, createdAt])
+}
+
+model CallSession {
+  id             String   @id @default(uuid())
+  conversationId String
+  type           String
+  startedBy      String
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  participants   String   @default("[]")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  starter      User         @relation("callStarter", fields: [startedBy], references: [id])
+}
