@@ -285,6 +285,9 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
 
                   <ZoomSetting />
 
+                  <ChatWallpaper />
+                  <CompactModeSetting />
+
                   <div>
                     <label className="mb-4 block text-xs font-bold uppercase tracking-wider text-muted-foreground">App Theme</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -366,6 +369,75 @@ function ZoomSetting() {
       </div>
       <div className="flex justify-center mt-3">
         <button onClick={() => applyZoom(100)} className="text-xs text-muted-foreground hover:text-primary transition-colors">Reset to 100%</button>
+      </div>
+    </div>
+  );
+}
+
+function CompactModeSetting() {
+  const [compact, setCompact] = useState(() => localStorage.getItem('compact-mode') === 'true');
+
+  const toggle = () => {
+    const next = !compact;
+    setCompact(next);
+    localStorage.setItem('compact-mode', String(next));
+    window.dispatchEvent(new Event('compact-mode-changed'));
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/30 p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Compact Mode</p>
+          <p className="text-xs text-muted-foreground mt-1">Show messages with less spacing for a denser layout</p>
+        </div>
+        <button onClick={toggle}
+          className={`relative flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${compact ? 'bg-primary' : 'bg-zinc-600'}`}>
+          <div className={`absolute left-[2px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${compact ? 'translate-x-[20px]' : 'translate-x-0'}`} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const WALLPAPERS = [
+  { id: 'none', name: 'None', bg: '' },
+  { id: 'dots', name: 'Dots', bg: 'radial-gradient(circle, var(--color-border) 1px, transparent 1px)', size: '20px 20px' },
+  { id: 'grid', name: 'Grid', bg: 'linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)', size: '24px 24px' },
+  { id: 'diagonal', name: 'Diagonal', bg: 'repeating-linear-gradient(45deg, transparent, transparent 10px, var(--color-border) 10px, var(--color-border) 11px)', size: '' },
+  { id: 'cross', name: 'Cross', bg: 'radial-gradient(circle, transparent 8px, var(--color-border) 8px, var(--color-border) 9px, transparent 9px)', size: '30px 30px' },
+  { id: 'waves', name: 'Waves', bg: 'repeating-linear-gradient(0deg, transparent, transparent 14px, var(--color-border) 14px, var(--color-border) 15px)', size: '' },
+];
+
+function ChatWallpaper() {
+  const [selected, setSelected] = useState(() => localStorage.getItem('chat-wallpaper') || 'none');
+
+  const apply = (id: string) => {
+    setSelected(id);
+    localStorage.setItem('chat-wallpaper', id);
+    window.dispatchEvent(new Event('wallpaper-changed'));
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/30 p-5">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-foreground">Chat Wallpaper</p>
+        <p className="text-xs text-muted-foreground mt-1">Add a pattern to your chat background</p>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {WALLPAPERS.map((w) => (
+          <button key={w.id} onClick={() => apply(w.id)}
+            className={`relative h-16 rounded-xl border-2 transition-all overflow-hidden active:scale-95
+              ${selected === w.id ? 'border-primary shadow-sm shadow-primary/20' : 'border-border hover:border-primary/30'}`}
+            style={w.bg ? { backgroundImage: w.bg, backgroundSize: w.size || undefined, backgroundColor: 'var(--color-background)' } : { backgroundColor: 'var(--color-background)' }}>
+            <span className="absolute inset-x-0 bottom-0 text-[9px] font-medium text-muted-foreground bg-card/80 py-0.5 text-center">{w.name}</span>
+            {selected === w.id && (
+              <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                <Check className="h-2.5 w-2.5 text-white" />
+              </div>
+            )}
+          </button>
+        ))}
       </div>
     </div>
   );

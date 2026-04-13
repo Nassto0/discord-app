@@ -3,7 +3,7 @@ import { useMotionValue } from 'framer-motion';
 import { useCallStore } from '@/stores/callStore';
 import { hangup, toggleScreenShare, changeScreenSource, applyAudioConstraints, getCallStats, toggleCameraForVoiceCall } from '@/hooks/useWebRTC';
 import { getInitials, getAvatarColor, formatDuration, fileUrl } from '@/lib/utils';
-import { Mic, MicOff, PhoneOff, Headphones, HeadphoneOff, Video, VideoOff, Settings2, Monitor, MonitorOff, Maximize2, Minimize2, RefreshCw, X } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Headphones, HeadphoneOff, Video, VideoOff, Settings2, Monitor, MonitorOff, Maximize2, Minimize2, RefreshCw, X, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sounds } from '@/lib/sounds';
 
@@ -23,6 +23,9 @@ export function CallView() {
   const [echoCancellation, setEchoCancellation] = useState(() => localStorage.getItem('audio-echo-cancel') === 'true');
   const [autoGain, setAutoGain] = useState(() => localStorage.getItem('audio-auto-gain') === 'true');
   const [ping, setPing] = useState<number | null>(null);
+  const [userVolume, setUserVolume] = useState(() => {
+    try { return Number(localStorage.getItem('call-user-volume')) || 100; } catch { return 100; }
+  });
 
   // Persistent drag positions — useMotionValue keeps position through re-renders
   const screenDragX = useMotionValue(0);
@@ -115,6 +118,12 @@ export function CallView() {
     applyAudioConstraints({ autoGainControl: next });
   };
 
+  const handleVolumeChange = (val: number) => {
+    setUserVolume(val);
+    localStorage.setItem('call-user-volume', String(val));
+    window.dispatchEvent(new CustomEvent('audio-settings-changed', { detail: { type: 'output-volume', value: val } }));
+  };
+
   const toggleCamera = () => {
     localStream?.getVideoTracks().forEach((t) => { t.enabled = !t.enabled; });
     useCallStore.setState({});
@@ -193,6 +202,17 @@ export function CallView() {
                     <SettingToggle label="Noise Suppression" enabled={noiseSuppression} onToggle={toggleNoise} />
                     <SettingToggle label="Echo Cancellation" enabled={echoCancellation} onToggle={toggleEcho} />
                     <SettingToggle label="Auto Gain Control" enabled={autoGain} onToggle={toggleAutoGain} />
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-white/10">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <div className="flex items-center gap-1.5">
+                        <Volume2 className="h-3.5 w-3.5 text-white/50" />
+                        <span className="text-xs font-medium text-white/70">User Volume</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-white/40">{userVolume}%</span>
+                    </div>
+                    <input type="range" min={0} max={200} value={userVolume} onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                      className="w-full h-1 rounded-full appearance-none cursor-pointer bg-white/10 accent-emerald-500" />
                   </div>
                 </motion.div>
               )}
@@ -356,6 +376,17 @@ export function CallView() {
                 </div>
                 <div className="flex-1">
                   <SettingToggle label="Auto Gain Control" enabled={autoGain} onToggle={toggleAutoGain} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between p-2">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="h-4 w-4 text-foreground/60" />
+                      <span className="text-sm font-medium text-foreground/80">User Volume</span>
+                    </div>
+                    <span className="text-xs font-mono text-foreground/50">{userVolume}%</span>
+                  </div>
+                  <input type="range" min={0} max={200} value={userVolume} onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                    className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-zinc-600 accent-emerald-500 mx-2" style={{ width: 'calc(100% - 16px)' }} />
                 </div>
               </div>
             </motion.div>

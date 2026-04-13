@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nasscord-v2';
+const CACHE_NAME = 'nasscord-v3';
 const PRECACHE_URLS = ['/', '/icon.png', '/favicon.ico'];
 
 self.addEventListener('install', (event) => {

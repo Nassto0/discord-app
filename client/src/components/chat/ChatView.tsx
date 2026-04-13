@@ -27,6 +27,17 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
+  const [wallpaper, setWallpaper] = useState(() => localStorage.getItem('chat-wallpaper') || 'none');
+  const [compactMode, setCompactMode] = useState(() => localStorage.getItem('compact-mode') === 'true');
+
+  useEffect(() => {
+    const onWallpaper = () => setWallpaper(localStorage.getItem('chat-wallpaper') || 'none');
+    const onCompact = () => setCompactMode(localStorage.getItem('compact-mode') === 'true');
+    window.addEventListener('wallpaper-changed', onWallpaper);
+    window.addEventListener('compact-mode-changed', onCompact);
+    return () => { window.removeEventListener('wallpaper-changed', onWallpaper); window.removeEventListener('compact-mode-changed', onCompact); };
+  }, []);
+
   const conv = conversations.find((c) => c.id === activeConversationId);
   const convMessages = activeConversationId ? messages[activeConversationId] || [] : [];
   const typing = activeConversationId ? typingUsers[activeConversationId] || [] : [];
@@ -76,6 +87,14 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     socket.emit('call:initiate', { conversationId: activeConversationId, type }, (call: any) => {
       useCallStore.getState().initiateCall(call.id, type, activeConversationId, remoteUser);
     });
+  };
+
+  const wallpaperStyles: Record<string, React.CSSProperties> = {
+    dots: { backgroundImage: 'radial-gradient(circle, var(--color-border) 1px, transparent 1px)', backgroundSize: '20px 20px' },
+    grid: { backgroundImage: 'linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)', backgroundSize: '24px 24px' },
+    diagonal: { backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, var(--color-border) 10px, var(--color-border) 11px)' },
+    cross: { backgroundImage: 'radial-gradient(circle, transparent 8px, var(--color-border) 8px, var(--color-border) 9px, transparent 9px)', backgroundSize: '30px 30px' },
+    waves: { backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 14px, var(--color-border) 14px, var(--color-border) 15px)' },
   };
 
   if (!conv) return null;
@@ -138,13 +157,13 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()}>
-            <div className="mx-auto max-w-3xl space-y-0.5">
+          <div className="flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()} style={wallpaperStyles[wallpaper] || {}}>
+            <div className={`mx-auto max-w-3xl ${compactMode ? 'space-y-0' : 'space-y-0.5'}`}>
               {filteredMessages.map((msg, i) => {
                 const prevMsg = filteredMessages[i - 1];
-                const showAvatar = !prevMsg || prevMsg.senderId !== msg.senderId ||
+                const showAvatar = compactMode ? false : (!prevMsg || prevMsg.senderId !== msg.senderId ||
                   new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() > 300000 ||
-                  prevMsg.type === 'system';
+                  prevMsg.type === 'system');
                 return (
                   <MessageBubble
                     key={msg.id}

@@ -32,6 +32,11 @@ let activeTargetUserId: string | null = null;
 let remoteBaseStream: MediaStream | null = null;
 // Prevent concurrent renegotiations from causing offer/answer spirals
 let isNegotiating = false;
+// Output audio processing chain for volume boost (>100%)
+let outputAudioCtx: AudioContext | null = null;
+let outputGainNode: GainNode | null = null;
+let outputSourceNode: MediaStreamAudioSourceNode | null = null;
+let outputMediaDest: MediaStreamAudioDestinationNode | null = null;
 
 // Mute the audio element whenever isDeafened toggles in the store
 useCallStore.subscribe((state) => {
@@ -67,7 +72,7 @@ async function switchInputDevice(deviceId: string) {
 function onAudioSettingsChanged(e: Event) {
   const { type, key, value } = (e as CustomEvent).detail;
   if (type === 'output-volume') {
-    if (audioEl) audioEl.volume = Math.max(0, Math.min(1, value / 100));
+    if (outputGainNode) outputGainNode.gain.value = Math.max(0, Math.min(2, value / 100));
   } else if (type === 'input-volume') {
     if (inputGainNode) inputGainNode.gain.value = Math.max(0, Math.min(2, value / 50));
   } else if (type === 'output-device') {
@@ -94,13 +99,8 @@ function applyAudioConstraintsInternal(constraints: MediaTrackConstraints) {
 
 function getSavedOutputVolume(): number {
   try {
-    const saved = localStorage.getItem('audio-settings');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (typeof parsed.outputVolume === 'number') {
-        return Math.max(0, Math.min(1, parsed.outputVolume / 100));
-      }
-    }
+    const saved = localStorage.getItem('call-user-volume');
+    if (saved) return Math.max(0, Math.min(2, Number(saved) / 100));
   } catch {}
   return 1;
 }
@@ -120,6 +120,10 @@ function cleanupWebRTC() {
     audioEl.srcObject = null;
     audioEl = null;
   }
+  if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} outputSourceNode = null; }
+  if (outputGainNode) { try { outputGainNode.disconnect(); } catch {} outputGainNode = null; }
+  outputMediaDest = null;
+  if (outputAudioCtx) { try { outputAudioCtx.close(); } catch {} outputAudioCtx = null; }
   remoteBaseStream = null;
   pendingCandidates = [];
   activeTargetUserId = null;
@@ -215,16 +219,26 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     // Force a fresh object reference so Zustand detects the change
     pushRemoteStream(remote);
 
-    // Only create the audio element once (for the audio track) to prevent echo
+    // Route audio through a GainNode to support volume boost beyond 100%
     if (event.track.kind === 'audio') {
+      if (!outputAudioCtx) {
+        outputAudioCtx = new AudioContext();
+        outputGainNode = outputAudioCtx.createGain();
+        outputGainNode.gain.value = getSavedOutputVolume();
+        outputMediaDest = outputAudioCtx.createMediaStreamDestination();
+        outputGainNode.connect(outputMediaDest);
+      }
+      if (outputAudioCtx.state === 'suspended') outputAudioCtx.resume().catch(() => {});
+      if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} }
+      outputSourceNode = outputAudioCtx.createMediaStreamSource(remote);
+      outputSourceNode.connect(outputGainNode!);
+
       if (!audioEl) {
         audioEl = new Audio();
         audioEl.autoplay = true;
-        audioEl.volume = getSavedOutputVolume(); // Respect saved output volume setting
       }
-      // Point audioEl at the ORIGINAL stream so it gets future track additions too
-      if (audioEl.srcObject !== remote) {
-        audioEl.srcObject = remote;
+      if (audioEl.srcObject !== outputMediaDest!.stream) {
+        audioEl.srcObject = outputMediaDest!.stream;
         audioEl.play().catch((e) => console.error('[WebRTC] autoplay blocked:', e));
       }
     }

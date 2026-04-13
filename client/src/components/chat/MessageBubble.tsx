@@ -3,22 +3,49 @@ import { formatMessageTime, getInitials, getAvatarColor, fileUrl } from '@/lib/u
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getSocket } from '@/hooks/useSocket';
-import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckCheck, Pencil } from 'lucide-react';
+import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckCheck, Pencil, Share2 } from 'lucide-react';
 import { VoicePlayer } from '@/components/media/VoicePlayer';
 import { MediaPreview } from '@/components/media/MediaPreview';
 import { motion } from 'framer-motion';
 
 const URL_REGEX = /https?:\/\/[^\s<>'")\]]+/g;
 
+// Inline formatting: **bold**, *italic*, ~~strikethrough~~, `code`, ```code blocks```
+function formatInline(text: string, isOwn: boolean): React.ReactNode[] {
+  const tokens: React.ReactNode[] = [];
+  // Pattern order matters: code block first, then inline code, bold, strikethrough, italic
+  const INLINE_RE = /```([\s\S]*?)```|`([^`]+)`|\*\*(.+?)\*\*|~~(.+?)~~|\*(.+?)\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = INLINE_RE.exec(text)) !== null) {
+    if (m.index > last) tokens.push(text.slice(last, m.index));
+    const key = m.index;
+    if (m[1] !== undefined) {
+      tokens.push(<code key={key} className={`block my-1 px-2 py-1 rounded text-xs font-mono whitespace-pre-wrap ${isOwn ? 'bg-black/20 text-white/90' : 'bg-secondary text-foreground'}`}>{m[1]}</code>);
+    } else if (m[2] !== undefined) {
+      tokens.push(<code key={key} className={`px-1 py-0.5 rounded text-[13px] font-mono ${isOwn ? 'bg-black/20 text-white/90' : 'bg-secondary text-foreground'}`}>{m[2]}</code>);
+    } else if (m[3] !== undefined) {
+      tokens.push(<strong key={key}>{m[3]}</strong>);
+    } else if (m[4] !== undefined) {
+      tokens.push(<del key={key} className="opacity-60">{m[4]}</del>);
+    } else if (m[5] !== undefined) {
+      tokens.push(<em key={key}>{m[5]}</em>);
+    }
+    last = INLINE_RE.lastIndex;
+  }
+  if (last < text.length) tokens.push(text.slice(last));
+  return tokens;
+}
+
 function Linkify({ children, isOwn }: { children: string; isOwn: boolean }) {
-  const parts = [];
+  const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match;
   const regex = new RegExp(URL_REGEX);
   while ((match = regex.exec(children)) !== null) {
-    if (match.index > lastIndex) parts.push(children.slice(lastIndex, match.index));
+    if (match.index > lastIndex) parts.push(...formatInline(children.slice(lastIndex, match.index), isOwn));
     parts.push(
-      <a key={match.index} href={match[0]} target="_blank" rel="noopener noreferrer"
+      <a key={`link-${match.index}`} href={match[0]} target="_blank" rel="noopener noreferrer"
         className={`underline break-all ${isOwn ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80'}`}
         onClick={(e) => e.stopPropagation()}>
         {match[0]}
@@ -26,7 +53,7 @@ function Linkify({ children, isOwn }: { children: string; isOwn: boolean }) {
     );
     lastIndex = regex.lastIndex;
   }
-  if (lastIndex < children.length) parts.push(children.slice(lastIndex));
+  if (lastIndex < children.length) parts.push(...formatInline(children.slice(lastIndex), isOwn));
   return <>{parts}</>;
 }
 
@@ -47,6 +74,8 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState('');
+  const [showForward, setShowForward] = useState(false);
+  const [forwardConvs, setForwardConvs] = useState<any[]>([]);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -140,6 +169,45 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
     } else {
       lastTapRef.current = now;
     }
+  };
+
+  const handleForwardOpen = () => {
+    setForwardConvs(useChatStore.getState().conversations.filter((c) => c.id !== message.conversationId));
+    setShowForward(true);
+    setContextMenu(null);
+  };
+
+  const handleForward = (targetConvId: string) => {
+    const socket = getSocket();
+    if (!socket) return;
+    const fwdContent = message.type === 'text' && message.content
+      ? `↪ *${message.sender.username}*: ${message.content}`
+      : null;
+    socket.emit('message:send', {
+      conversationId: targetConvId,
+      content: fwdContent,
+      type: message.type,
+      fileUrl: message.fileUrl || null,
+      replyToId: null,
+      fileDuration: message.fileDuration || null,
+    });
+    setShowForward(false);
+  };
+
+  const getConvName = (c: any) => {
+    if (c.type === 'dm') {
+      const other = c.members.find((m: any) => m.userId !== userId);
+      return other?.user?.username || 'Unknown';
+    }
+    return c.name || 'Group Chat';
+  };
+
+  const getConvAvatar = (c: any) => {
+    if (c.type === 'dm') {
+      const other = c.members.find((m: any) => m.userId !== userId);
+      return other?.user?.avatar || null;
+    }
+    return c.avatar || null;
   };
 
   if (message.type === 'system') {
@@ -332,6 +400,10 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
                 <Copy className="h-4 w-4 text-muted-foreground" /> Copy Text
               </button>
             )}
+            <button onClick={handleForwardOpen}
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary">
+              <Share2 className="h-4 w-4 text-muted-foreground" /> Forward
+            </button>
             {isOwn && (
               <>
                 {message.type === 'text' && message.content && (
@@ -348,6 +420,43 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {showForward && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowForward(false)}>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+            className="w-80 max-h-96 rounded-2xl border border-border bg-card shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-border">
+              <p className="text-sm font-bold text-foreground">Forward Message</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Select a conversation</p>
+            </div>
+            <div className="overflow-y-auto max-h-72">
+              {forwardConvs.map((c) => {
+                const name = getConvName(c);
+                const avatar = getConvAvatar(c);
+                return (
+                  <button key={c.id} onClick={() => handleForward(c.id)}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 hover:bg-secondary/50 transition-colors text-left">
+                    {avatar ? (
+                      <img src={fileUrl(avatar)} alt="" className="h-9 w-9 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${getAvatarColor(name)} text-xs font-bold text-white`}>
+                        {getInitials(name)}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{name}</p>
+                      <p className="text-[11px] text-muted-foreground">{c.type === 'dm' ? 'Direct Message' : `${c.members.length} members`}</p>
+                    </div>
+                  </button>
+                );
+              })}
+              {forwardConvs.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-6">No conversations to forward to</p>
+              )}
+            </div>
+          </motion.div>
         </div>
       )}
     </>
