@@ -26,6 +26,7 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
   const menuRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -45,13 +46,41 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
     return () => document.removeEventListener('mousedown', handler);
   }, [showEmojiPicker]);
 
-  const handleContextMenu = (e: React.MouseEvent) => {
+  const handleContextMenu = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const clientX = 'touches' in e ? e.touches[0]?.clientX ?? window.innerWidth / 2 : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0]?.clientY ?? window.innerHeight / 2 : e.clientY;
     setContextMenu({
-      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 200)),
-      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 320)),
+      x: Math.max(8, Math.min(clientX, window.innerWidth - 200)),
+      y: Math.max(8, Math.min(clientY, window.innerHeight - 320)),
     });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    longPressTimer.current = window.setTimeout(() => {
+      // Vibrate for haptic feedback if available
+      if (navigator.vibrate) navigator.vibrate(30);
+      setContextMenu({
+        x: Math.max(8, Math.min(touch.clientX, window.innerWidth - 200)),
+        y: Math.max(8, Math.min(touch.clientY, window.innerHeight - 320)),
+      });
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleTouchMove = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   };
 
   const handleReact = (emoji: string) => {
@@ -89,6 +118,9 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
         ref={rowRef}
         className={`group/msg relative flex gap-2 px-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${showAvatar ? 'mt-3' : 'mt-0.5'}`}
         onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
         onMouseEnter={() => setShowActions(true)}
         onMouseLeave={() => { setShowActions(false); if (!showEmojiPicker) setShowEmojiPicker(false); }}
       >

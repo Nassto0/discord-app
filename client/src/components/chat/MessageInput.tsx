@@ -93,7 +93,7 @@ export function MessageInput({ conversationId }: MessageInputProps) {
   };
 
   return (
-    <div className="px-4 pb-2 pt-1">
+    <div className="px-4 pb-2 pt-1" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0.5rem))' }}>
       <AnimatePresence>
         {replyingTo && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
