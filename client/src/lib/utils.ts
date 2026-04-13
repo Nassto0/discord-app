@@ -48,6 +48,21 @@ export function fileUrl(url: string | null | undefined): string {
   return `${API_URL}${url}`;
 }
 
+export function formatLastSeen(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (mins < 1) return 'Last seen just now';
+  if (mins < 60) return `Last seen ${mins}m ago`;
+  if (hours < 24) return `Last seen ${hours}h ago`;
+  if (days < 7) return `Last seen ${days}d ago`;
+  return `Last seen ${date.toLocaleDateString()}`;
+}
+
 export function getAvatarColor(name: string): string {
   const colors = [
     'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-pink-500',

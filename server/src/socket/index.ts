@@ -26,11 +26,13 @@ function serializeMessage(m: any) {
     ...m,
     readBy: typeof m.readBy === 'string' ? JSON.parse(m.readBy) : m.readBy,
     createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : m.createdAt,
+    editedAt: m.editedAt instanceof Date ? m.editedAt.toISOString() : (m.editedAt || null),
     sender: serializeUser(m.sender),
     replyTo: m.replyTo ? {
       ...m.replyTo,
       readBy: typeof m.replyTo.readBy === 'string' ? JSON.parse(m.replyTo.readBy) : m.replyTo.readBy,
       createdAt: m.replyTo.createdAt instanceof Date ? m.replyTo.createdAt.toISOString() : m.replyTo.createdAt,
+      editedAt: m.replyTo.editedAt instanceof Date ? m.replyTo.editedAt.toISOString() : (m.replyTo.editedAt || null),
       sender: serializeUser(m.replyTo.sender),
       replyTo: null,
     } : null,
@@ -152,6 +154,23 @@ export function setupSocketHandlers(io: Server) {
 
     socket.on('post:deleted', (data) => {
       socket.broadcast.emit('post:deleted', data);
+    });
+
+    socket.on('message:edit', async (data) => {
+      try {
+        const { messageId, conversationId, content } = data;
+        const msg = await prisma.message.findUnique({ where: { id: messageId } });
+        if (msg && msg.senderId === userId && msg.type === 'text') {
+          const updated = await prisma.message.update({
+            where: { id: messageId },
+            data: { content, editedAt: new Date() },
+            include: { sender: { select: userSelect }, replyTo: { include: { sender: { select: userSelect } } } },
+          });
+          io.to(`conv:${conversationId}`).emit('message:edited', serializeMessage(updated));
+        }
+      } catch (error) {
+        console.error('Message edit error:', error);
+      }
     });
 
     socket.on('message:delete', async (data) => {

@@ -5,8 +5,8 @@ import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { NewConversationDialog } from './NewConversationDialog';
 import { GroupPanel } from './GroupPanel';
-import { getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { ArrowLeft, Phone, Video, Users, UserPlus } from 'lucide-react';
+import { getInitials, getAvatarColor, fileUrl, formatLastSeen } from '@/lib/utils';
+import { ArrowLeft, Phone, Video, Users, UserPlus, Search, X } from 'lucide-react';
 import { getSocket } from '@/hooks/useSocket';
 import { useCallStore } from '@/stores/callStore';
 import { ensureMediaPermissions } from '@/hooks/useWebRTC';
@@ -24,6 +24,8 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showNewConv, setShowNewConv] = useState(false);
   const [showGroupPanel, setShowGroupPanel] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   const conv = conversations.find((c) => c.id === activeConversationId);
   const convMessages = activeConversationId ? messages[activeConversationId] || [] : [];
@@ -46,6 +48,10 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     }
     setShowGroupPanel(false);
   }, [activeConversationId, loadMessages, clearUnread]);
+
+  const filteredMessages = searchQuery
+    ? convMessages.filter((m) => m.content?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : convMessages;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,7 +98,7 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
           <button onClick={() => isGroup ? setShowGroupPanel(!showGroupPanel) : otherUser && onUserClick(otherUser.id)}
             className="text-sm font-bold text-foreground hover:underline truncate block">{displayName}</button>
           <p className="text-[11px] text-muted-foreground">
-            {isGroup ? `${memberCount} members, ${onlineMemberCount} online` : isOnline ? 'Online' : 'Offline'}
+            {isGroup ? `${memberCount} members, ${onlineMemberCount} online` : isOnline ? 'Online' : otherUser?.lastSeen ? formatLastSeen(otherUser.lastSeen) : 'Offline'}
           </p>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
@@ -109,18 +115,33 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
               <Users className="h-[18px] w-[18px]" />
             </button>
           )}
+          <button onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearchQuery(''); }}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${showSearch ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+            title="Search Messages">
+            <Search className="h-[18px] w-[18px]" />
+          </button>
           <button onClick={() => setShowNewConv(true)} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Add People">
             <UserPlus className="h-[18px] w-[18px]" />
           </button>
         </div>
       </div>
 
+      {showSearch && (
+        <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2 shrink-0">
+          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+          <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search in conversation..."
+            className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground outline-none" autoFocus />
+          {searchQuery && <span className="text-xs text-muted-foreground shrink-0">{filteredMessages.length} found</span>}
+          <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col min-w-0">
           <div className="flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()}>
             <div className="mx-auto max-w-3xl space-y-0.5">
-              {convMessages.map((msg, i) => {
-                const prevMsg = convMessages[i - 1];
+              {filteredMessages.map((msg, i) => {
+                const prevMsg = filteredMessages[i - 1];
                 const showAvatar = !prevMsg || prevMsg.senderId !== msg.senderId ||
                   new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime() > 300000 ||
                   prevMsg.type === 'system';

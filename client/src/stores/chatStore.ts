@@ -60,6 +60,7 @@ interface ChatState {
   loadAllUsers: () => Promise<void>;
   addMessage: (message: Message) => void;
   deleteMessage: (messageId: string, conversationId: string) => void;
+  editMessage: (messageId: string, conversationId: string, content: string, editedAt: string) => void;
   updateReactions: (messageId: string, conversationId: string, reactions: Record<string, string[]>) => void;
   addConversation: (conversation: Conversation) => void;
   updateConversation: (conversation: Conversation) => void;
@@ -128,6 +129,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: {
         ...state.messages,
         [conversationId]: (state.messages[conversationId] || []).filter((m) => m.id !== messageId),
+      },
+    }));
+  },
+
+  editMessage: (messageId, conversationId, content, editedAt) => {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] || []).map((m) =>
+          m.id === messageId ? { ...m, content, editedAt } : m,
+        ),
       },
     }));
   },

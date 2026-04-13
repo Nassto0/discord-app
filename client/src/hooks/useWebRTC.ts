@@ -340,11 +340,11 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     }
   });
 
-  // Read all voice-processing settings from localStorage so they match AudioSettings defaults
-  // echoCancellation defaults to ON (true) — 'false' must be explicitly stored to disable it
+  // Read all voice-processing settings from localStorage — all default to ON (true)
+  // 'false' must be explicitly stored to disable any of them
   const echoCancel = localStorage.getItem('audio-echo-cancel') !== 'false';
-  const noiseSuppress = localStorage.getItem('audio-noise-suppress') === 'true';
-  const autoGain = localStorage.getItem('audio-auto-gain') === 'true';
+  const noiseSuppress = localStorage.getItem('audio-noise-suppress') !== 'false';
+  const autoGain = localStorage.getItem('audio-auto-gain') !== 'false';
   const savedSettings = localStorage.getItem('audio-settings');
   let inputDeviceId: string | undefined;
   if (savedSettings) {

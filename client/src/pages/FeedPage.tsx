@@ -20,6 +20,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [shared, setShared] = useState<string | null>(null);
   const [savedPosts, setSavedPosts] = useState<Set<string>>(() => {
@@ -30,7 +31,10 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const [commentLoading, setCommentLoading] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { loadPosts(); }, []);
+  useEffect(() => {
+    loadPosts();
+    api.users.all().then(setAllUsers).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
@@ -204,6 +208,28 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 py-5 space-y-4">
+          {(() => {
+            const online = allUsers.filter((u) => u.id !== user?.id && onlineUsers.has(u.id));
+            if (online.length === 0) return null;
+            return (
+              <div className="flex gap-3 overflow-x-auto pb-1 px-1 scrollbar-none">
+                {online.map((u) => (
+                  <button key={u.id} onClick={() => onUserClick(u.id)} className="flex flex-col items-center gap-1 shrink-0 group">
+                    <div className="relative">
+                      {u.avatar ? <img src={fileUrl(u.avatar)} alt="" className="h-12 w-12 rounded-full object-cover ring-2 ring-emerald-500/50 group-hover:ring-primary transition-all" /> : (
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-full ${getAvatarColor(u.username)} text-sm font-semibold text-white ring-2 ring-emerald-500/50 group-hover:ring-primary transition-all`}>
+                          {getInitials(u.username)}
+                        </div>
+                      )}
+                      <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-emerald-500" />
+                    </div>
+                    <span className="text-[10px] text-muted-foreground truncate max-w-[56px] group-hover:text-foreground transition-colors">{u.username}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+
           <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
             <div className="flex gap-3 p-4">
               {user?.avatar ? (

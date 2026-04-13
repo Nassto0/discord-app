@@ -3,10 +3,32 @@ import { formatMessageTime, getInitials, getAvatarColor, fileUrl } from '@/lib/u
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getSocket } from '@/hooks/useSocket';
-import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckCheck } from 'lucide-react';
+import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckCheck, Pencil } from 'lucide-react';
 import { VoicePlayer } from '@/components/media/VoicePlayer';
 import { MediaPreview } from '@/components/media/MediaPreview';
 import { motion } from 'framer-motion';
+
+const URL_REGEX = /https?:\/\/[^\s<>'")\]]+/g;
+
+function Linkify({ children, isOwn }: { children: string; isOwn: boolean }) {
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  const regex = new RegExp(URL_REGEX);
+  while ((match = regex.exec(children)) !== null) {
+    if (match.index > lastIndex) parts.push(children.slice(lastIndex, match.index));
+    parts.push(
+      <a key={match.index} href={match[0]} target="_blank" rel="noopener noreferrer"
+        className={`underline break-all ${isOwn ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80'}`}
+        onClick={(e) => e.stopPropagation()}>
+        {match[0]}
+      </a>
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < children.length) parts.push(children.slice(lastIndex));
+  return <>{parts}</>;
+}
 
 interface MessageBubbleProps {
   message: any;
@@ -23,10 +45,14 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showActions, setShowActions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<number | null>(null);
+  const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -73,6 +99,8 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
+      // If not a long press, check for double-tap
+      handleDoubleTap();
     }
   };
 
@@ -87,6 +115,31 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
     getSocket()?.emit('message:react', { messageId: message.id, conversationId: message.conversationId, emoji });
     setContextMenu(null);
     setShowEmojiPicker(false);
+  };
+
+  const handleEdit = () => {
+    setEditText(message.content || '');
+    setIsEditing(true);
+    setContextMenu(null);
+    setTimeout(() => editInputRef.current?.focus(), 50);
+  };
+
+  const submitEdit = () => {
+    const trimmed = editText.trim();
+    if (trimmed && trimmed !== message.content) {
+      getSocket()?.emit('message:edit', { messageId: message.id, conversationId: message.conversationId, content: trimmed });
+    }
+    setIsEditing(false);
+  };
+
+  const handleDoubleTap = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      handleReact('❤️');
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
   };
 
   if (message.type === 'system') {
@@ -178,8 +231,21 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
                   : 'bg-card text-foreground rounded-bl-md border border-border/50'
                 }
                 ${showAvatar ? '' : isOwn ? 'rounded-tr-2xl' : 'rounded-tl-2xl'}`}>
-                {message.type === 'text' && message.content && (
-                  <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">{message.content}</p>
+                {message.type === 'text' && message.content && !isEditing && (
+                  <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
+                    <Linkify isOwn={isOwn}>{message.content}</Linkify>
+                  </p>
+                )}
+                {isEditing && (
+                  <div className="min-w-[200px]">
+                    <textarea ref={editInputRef} value={editText} onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit(); } if (e.key === 'Escape') setIsEditing(false); }}
+                      className="w-full resize-none bg-transparent text-[14px] leading-relaxed outline-none" rows={1}
+                      onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }} />
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className={`text-[10px] ${isOwn ? 'text-white/40' : 'text-muted-foreground/40'}`}>escape to cancel · enter to save</span>
+                    </div>
+                  </div>
                 )}
                 {message.type === 'voice' && message.fileUrl && (
                   <VoicePlayer src={fileUrl(message.fileUrl)} duration={message.fileDuration} isOwn={isOwn} />
@@ -188,6 +254,7 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
                   <MediaPreview type={message.type} src={fileUrl(message.fileUrl)} />
                 )}
                 <div className={`flex items-center gap-1 justify-end mt-0.5 ${isOwn ? 'text-white/50' : 'text-muted-foreground/50'}`}>
+                  {message.editedAt && <span className="text-[10px] italic">edited</span>}
                   <span className="text-[10px]">{formatMessageTime(message.createdAt)}</span>
                   {isOwn && (
                     isSeen
@@ -267,6 +334,12 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
             )}
             {isOwn && (
               <>
+                {message.type === 'text' && message.content && (
+                  <button onClick={handleEdit}
+                    className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary">
+                    <Pencil className="h-4 w-4 text-muted-foreground" /> Edit Message
+                  </button>
+                )}
                 <div className="h-px bg-border my-1" />
                 <button onClick={() => { getSocket()?.emit('message:delete', { messageId: message.id, conversationId: message.conversationId }); setContextMenu(null); }}
                   className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-red-400 hover:bg-red-500/10">

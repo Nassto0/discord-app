@@ -66,6 +66,7 @@ export function useSocket() {
     });
 
     socket.on('message:deleted', (data) => useChatStore.getState().deleteMessage(data.messageId, data.conversationId));
+    socket.on('message:edited', (data) => useChatStore.getState().editMessage(data.id, data.conversationId, data.content, data.editedAt));
     socket.on('message:reacted', (data) => useChatStore.getState().updateReactions(data.messageId, data.conversationId, data.reactions));
     socket.on('message:read', (data) => {
       if (data?.conversationId && data?.userId) {
@@ -145,6 +146,13 @@ export function useSocket() {
       getStoredCall(); // just to check it exists
       useCallStore.getState().cleanup(); // also clears sessionStorage
     });
+
+    // Update page title with unread count
+    const updateTitle = () => {
+      const total = useChatStore.getState().conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+      document.title = total > 0 ? `(${total}) Nasscord` : 'Nasscord';
+    };
+    useChatStore.subscribe(updateTitle);
 
     socket.on('conversation:updated', (conv) => {
       useChatStore.getState().updateConversation(conv);

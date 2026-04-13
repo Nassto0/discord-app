@@ -123,9 +123,12 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
                         )}
                       </div>
                       {lastMsg && (
-                        <p className="truncate text-[11px] text-muted-foreground">
-                          {lastMsg.type === 'system' ? lastMsg.content : lastMsg.type === 'voice' ? '🎤 Voice message' : lastMsg.type === 'image' ? '📷 Photo' : lastMsg.type === 'video' ? '🎥 Video' : lastMsg.content}
-                        </p>
+                        <div className="flex items-center gap-1">
+                          <p className="truncate text-[11px] text-muted-foreground flex-1">
+                            {lastMsg.type === 'system' ? lastMsg.content : lastMsg.type === 'voice' ? '🎤 Voice message' : lastMsg.type === 'image' ? '📷 Photo' : lastMsg.type === 'video' ? '🎥 Video' : lastMsg.content}
+                          </p>
+                          <span className="text-[10px] text-muted-foreground/50 shrink-0">{formatTime(lastMsg.createdAt)}</span>
+                        </div>
                       )}
                     </div>
                     <div
