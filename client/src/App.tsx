@@ -10,6 +10,7 @@ import { TitleBar } from '@/components/layout/TitleBar';
 import { useCallStore } from '@/stores/callStore';
 import { AnimatePresence } from 'framer-motion';
 import { Analytics } from '@vercel/analytics/react';
+import { ToastViewport } from '@/components/ui/ToastViewport';
 
 export function App() {
   const { user, isLoading, checkAuth } = useAuthStore();
@@ -50,6 +51,7 @@ export function App() {
       </div>
       <IncomingCallOverlay />
       <AnimatePresence>{isVideoCall && <CallView />}</AnimatePresence>
+      <ToastViewport />
       <Analytics />
     </div>
   );

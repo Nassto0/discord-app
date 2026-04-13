@@ -45,7 +45,15 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) { res.status(401).json({ message: 'Invalid email or password' }); return; }
     if (user.isBanned) {
-      res.status(403).json({ code: 'banned', message: user.banReason || 'Your account has been banned.' });
+      res.status(403).json({ code: 'banned', message: `Ban reason: ${user.banReason || 'Your account has been banned.'}` });
+      return;
+    }
+    if (user.timeoutUntil && user.timeoutUntil > new Date()) {
+      const until = user.timeoutUntil.toISOString();
+      res.status(403).json({
+        code: 'timeout',
+        message: `Timeout reason: ${user.timeoutReason || 'You are timed out.'} (until ${until})`,
+      });
       return;
     }
 

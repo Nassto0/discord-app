@@ -52,7 +52,7 @@ function serializeMessage(m: any) {
   };
 }
 
-const userSelect = { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true, presence: true, bio: true, banner: true, customStatus: true, links: true, badges: true, nassPoints: true };
+const userSelect = { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true, presence: true, bio: true, banner: true, customStatus: true, links: true, badges: true, nassPoints: true };
 
 export function setupSocketHandlers(io: Server) {
   ioRef = io;
@@ -105,22 +105,50 @@ export function setupSocketHandlers(io: Server) {
           select: { isBanned: true, banReason: true, mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true },
         });
         if (me?.isBanned) {
-          if (callback) callback({ error: true, reason: me.banReason || 'Account banned' });
-          socket.emit('auth:force-logout', { reason: me.banReason || 'Your account has been banned.' });
+          const reason = `Ban reason: ${me.banReason || 'Account banned'}`;
+          if (callback) callback({ error: true, reason });
+          socket.emit('auth:force-logout', { reason });
           socket.disconnect(true);
           return;
         }
         const now = new Date();
         if (me?.timeoutUntil && me.timeoutUntil > now) {
-          if (callback) callback({ error: true, reason: me.timeoutReason || 'You are timed out.' });
+          const reason = `Timeout reason: ${me.timeoutReason || 'You are timed out.'} (until ${me.timeoutUntil.toISOString()})`;
+          if (callback) callback({ error: true, reason });
           return;
         }
         if (me?.mutedUntil && me.mutedUntil > now) {
-          if (callback) callback({ error: true, reason: me.muteReason || 'You are muted.' });
+          const reason = `Mute reason: ${me.muteReason || 'You are muted.'} (until ${me.mutedUntil.toISOString()})`;
+          if (callback) callback({ error: true, reason });
           return;
         }
 
         const { conversationId, content, type, fileUrl, replyToId, fileDuration } = data;
+        const conv = await prisma.conversation.findUnique({
+          where: { id: String(conversationId) },
+          include: { members: { select: { userId: true } } },
+        });
+        if (!conv || !conv.members.some((m) => m.userId === userId)) {
+          if (callback) callback({ error: true, reason: 'Conversation not found' });
+          return;
+        }
+        if (conv.type === 'dm') {
+          const otherId = conv.members.find((m) => m.userId !== userId)?.userId;
+          if (otherId) {
+            const blocked = await prisma.block.findFirst({
+              where: {
+                OR: [
+                  { blockerId: userId, blockedId: otherId },
+                  { blockerId: otherId, blockedId: userId },
+                ],
+              },
+            });
+            if (blocked) {
+              if (callback) callback({ error: true, reason: 'Messaging blocked between users.' });
+              return;
+            }
+          }
+        }
 
         // Auto-mod check
         const textCheck = checkContent(content);
@@ -147,9 +175,30 @@ export function setupSocketHandlers(io: Server) {
         });
 
         const serialized = serializeMessage(message);
+        if (fileUrl) {
+          await prisma.messageAttachment.create({
+            data: {
+              messageId: message.id,
+              url: String(fileUrl),
+              type: String(type || 'file'),
+            },
+          });
+        }
 
         io.to(`conv:${conversationId}`).emit('message:received', serialized);
         if (callback) callback(serialized);
+        if (conv.type === 'dm') {
+          const targetUserId = conv.members.find((m) => m.userId !== userId)?.userId;
+          if (targetUserId) {
+            await prisma.notification.create({
+              data: {
+                userId: targetUserId,
+                type: 'message',
+                data: JSON.stringify({ conversationId, fromUserId: userId, messageId: message.id }),
+              },
+            });
+          }
+        }
 
         if (!shouldDeleteSoon) {
           const pointsGain = type === 'image' || type === 'video' || type === 'voice' ? 3 : 1;
@@ -173,10 +222,6 @@ export function setupSocketHandlers(io: Server) {
 
         // Update DM streak
         try {
-          const conv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { type: true, members: { select: { userId: true } } },
-          });
           if (conv?.type === 'dm') {
             const today = new Date().toISOString().split('T')[0];
             const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
@@ -283,26 +328,28 @@ export function setupSocketHandlers(io: Server) {
         const { messageId, conversationId, emoji } = data;
 
         const updated = await prisma.$transaction(async (tx) => {
-          const msg = await tx.message.findUnique({ where: { id: messageId } });
+          const msg = await tx.message.findUnique({ where: { id: String(messageId) } });
           if (!msg) return null;
-
-          let reactions: Record<string, string[]> = {};
-          try { reactions = JSON.parse(msg.reactions || '{}'); } catch {}
-
-          if (!reactions[emoji]) reactions[emoji] = [];
-          const idx = reactions[emoji].indexOf(userId);
-          if (idx >= 0) {
-            reactions[emoji].splice(idx, 1);
-            if (reactions[emoji].length === 0) delete reactions[emoji];
+          const existing = await tx.messageReaction.findUnique({
+            where: { messageId_userId_emoji: { messageId: msg.id, userId, emoji: String(emoji) } },
+          });
+          if (existing) {
+            await tx.messageReaction.delete({ where: { id: existing.id } });
           } else {
-            reactions[emoji].push(userId);
+            await tx.messageReaction.create({
+              data: { messageId: msg.id, userId, emoji: String(emoji) },
+            });
           }
-
+          const all = await tx.messageReaction.findMany({ where: { messageId: msg.id } });
+          const reactions = all.reduce<Record<string, string[]>>((acc, row) => {
+            if (!acc[row.emoji]) acc[row.emoji] = [];
+            acc[row.emoji].push(row.userId);
+            return acc;
+          }, {});
           await tx.message.update({
-            where: { id: messageId },
+            where: { id: msg.id },
             data: { reactions: JSON.stringify(reactions) },
           });
-
           return reactions;
         });
 

@@ -4,7 +4,7 @@ import { checkContent, checkUrl } from '../lib/automod';
 
 export const postRouter = Router();
 
-const userSelect = { id: true, username: true, email: true, avatar: true, banner: true, bio: true, status: true, customStatus: true, nassPoints: true, lastSeen: true, createdAt: true };
+const userSelect = { id: true, username: true, avatar: true, banner: true, bio: true, status: true, customStatus: true, nassPoints: true, lastSeen: true, createdAt: true };
 
 postRouter.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -50,15 +50,15 @@ postRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response) 
     });
     const now = new Date();
     if (me?.isBanned) {
-      res.status(403).json({ code: 'banned', message: me.banReason || 'Your account is banned.' });
+      res.status(403).json({ code: 'banned', message: `Ban reason: ${me.banReason || 'Your account is banned.'}` });
       return;
     }
     if (me?.timeoutUntil && me.timeoutUntil > now) {
-      res.status(403).json({ code: 'timeout', message: me.timeoutReason || 'You are timed out.' });
+      res.status(403).json({ code: 'timeout', message: `Timeout reason: ${me.timeoutReason || 'You are timed out.'} (until ${me.timeoutUntil.toISOString()})` });
       return;
     }
     if (me?.mutedUntil && me.mutedUntil > now) {
-      res.status(403).json({ code: 'muted', message: me.muteReason || 'You are muted.' });
+      res.status(403).json({ code: 'muted', message: `Mute reason: ${me.muteReason || 'You are muted.'} (until ${me.mutedUntil.toISOString()})` });
       return;
     }
 
@@ -163,11 +163,11 @@ postRouter.post('/:id/comments', authenticateToken, async (req: AuthRequest, res
     });
     const now = new Date();
     if (me?.timeoutUntil && me.timeoutUntil > now) {
-      res.status(403).json({ code: 'timeout', message: me.timeoutReason || 'You are timed out.' });
+      res.status(403).json({ code: 'timeout', message: `Timeout reason: ${me.timeoutReason || 'You are timed out.'} (until ${me.timeoutUntil.toISOString()})` });
       return;
     }
     if (me?.mutedUntil && me.mutedUntil > now) {
-      res.status(403).json({ code: 'muted', message: me.muteReason || 'You are muted.' });
+      res.status(403).json({ code: 'muted', message: `Mute reason: ${me.muteReason || 'You are muted.'} (until ${me.mutedUntil.toISOString()})` });
       return;
     }
 

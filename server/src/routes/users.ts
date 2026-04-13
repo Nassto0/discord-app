@@ -4,7 +4,7 @@ import { prisma, authenticateToken, AuthRequest } from '../middleware/auth';
 export const userRouter = Router();
 
 const userSelect = {
-  id: true, username: true, email: true, avatar: true, banner: true, bio: true,
+  id: true, username: true, avatar: true, banner: true, bio: true,
   status: true, presence: true, customStatus: true, badges: true, links: true,
   nassPoints: true, mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true,
   lastSeen: true, createdAt: true,
@@ -52,10 +52,21 @@ userRouter.get('/search', authenticateToken, async (req: AuthRequest, res: Respo
 
 userRouter.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: userSelect });
+    const targetId = String(req.params.id);
+    const user = await prisma.user.findUnique({ where: { id: targetId }, select: userSelect });
     if (!user) { res.status(404).json({ message: 'User not found' }); return; }
+    const [follow, block] = await Promise.all([
+      prisma.follow.findUnique({
+        where: { followerId_followingId: { followerId: req.userId!, followingId: targetId } },
+      }),
+      prisma.block.findUnique({
+        where: { blockerId_blockedId: { blockerId: req.userId!, blockedId: targetId } },
+      }),
+    ]);
     res.json({
       ...user,
+      isFollowing: !!follow,
+      isBlockedByMe: !!block,
       mutedUntil: user.mutedUntil ? user.mutedUntil.toISOString() : null,
       timeoutUntil: user.timeoutUntil ? user.timeoutUntil.toISOString() : null,
       lastSeen: user.lastSeen.toISOString(),
@@ -88,6 +99,104 @@ userRouter.put('/profile', authenticateToken, async (req: AuthRequest, res: Resp
       lastSeen: user.lastSeen.toISOString(),
       createdAt: user.createdAt.toISOString(),
     });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+userRouter.post('/:id/follow', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = String(req.params.id);
+    if (targetId === req.userId) { res.status(400).json({ message: 'Cannot follow yourself' }); return; }
+    await prisma.follow.upsert({
+      where: { followerId_followingId: { followerId: req.userId!, followingId: targetId } },
+      create: { followerId: req.userId!, followingId: targetId },
+      update: {},
+    });
+    await prisma.notification.create({
+      data: {
+        userId: targetId,
+        type: 'follow',
+        data: JSON.stringify({ fromUserId: req.userId }),
+      },
+    });
+    res.json({ following: true });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+userRouter.delete('/:id/follow', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = String(req.params.id);
+    await prisma.follow.deleteMany({
+      where: { followerId: req.userId!, followingId: targetId },
+    });
+    res.json({ following: false });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+userRouter.post('/:id/block', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = String(req.params.id);
+    if (targetId === req.userId) { res.status(400).json({ message: 'Cannot block yourself' }); return; }
+    await prisma.block.upsert({
+      where: { blockerId_blockedId: { blockerId: req.userId!, blockedId: targetId } },
+      create: { blockerId: req.userId!, blockedId: targetId },
+      update: {},
+    });
+    await prisma.follow.deleteMany({
+      where: {
+        OR: [
+          { followerId: req.userId!, followingId: targetId },
+          { followerId: targetId, followingId: req.userId! },
+        ],
+      },
+    });
+    res.json({ blocked: true });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+userRouter.delete('/:id/block', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = String(req.params.id);
+    await prisma.block.deleteMany({ where: { blockerId: req.userId!, blockedId: targetId } });
+    res.json({ blocked: false });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+userRouter.get('/notifications/list', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const items = await prisma.notification.findMany({
+      where: { userId: req.userId! },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json(items.map((n) => ({
+      ...n,
+      createdAt: n.createdAt.toISOString(),
+      updatedAt: n.updatedAt.toISOString(),
+      data: (() => { try { return JSON.parse(n.data); } catch { return n.data; } })(),
+    })));
+  } catch (error) {
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+userRouter.post('/notifications/:id/read', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    await prisma.notification.updateMany({
+      where: { id, userId: req.userId! },
+      data: { read: true },
+    });
+    res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }

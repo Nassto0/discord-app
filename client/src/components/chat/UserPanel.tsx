@@ -44,6 +44,7 @@ interface UserPanelProps {
 export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: UserPanelProps) {
   const [user, setUser] = useState<any>(null);
   const [dmStreak, setDmStreak] = useState<number>(0);
+  const [updatingRelation, setUpdatingRelation] = useState(false);
   const me = useAuthStore((s) => s.user);
   const { conversations, addConversation, setActiveConversation, onlineUsers, userStatuses } = useChatStore();
   const isOnline = onlineUsers.has(userId);
@@ -96,6 +97,38 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
     }
   };
 
+  const toggleFollow = async () => {
+    if (!user || isMe || updatingRelation) return;
+    setUpdatingRelation(true);
+    try {
+      if (user.isFollowing) {
+        await api.users.unfollow(user.id);
+        setUser((prev: any) => ({ ...prev, isFollowing: false }));
+      } else {
+        await api.users.follow(user.id);
+        setUser((prev: any) => ({ ...prev, isFollowing: true }));
+      }
+    } finally {
+      setUpdatingRelation(false);
+    }
+  };
+
+  const toggleBlock = async () => {
+    if (!user || isMe || updatingRelation) return;
+    setUpdatingRelation(true);
+    try {
+      if (user.isBlockedByMe) {
+        await api.users.unblock(user.id);
+        setUser((prev: any) => ({ ...prev, isBlockedByMe: false }));
+      } else {
+        await api.users.block(user.id);
+        setUser((prev: any) => ({ ...prev, isBlockedByMe: true, isFollowing: false }));
+      }
+    } finally {
+      setUpdatingRelation(false);
+    }
+  };
+
   if (!user) return null;
 
   const badges: string[] = (() => {
@@ -118,7 +151,7 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
           onClick={(e) => e.stopPropagation()}
           className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
           <PanelContent user={user} isMe={isMe} isOnline={isOnline} displayPresence={displayPresence}
-            badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} />
+            badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} toggleFollow={toggleFollow} toggleBlock={toggleBlock} updatingRelation={updatingRelation} />
         </motion.div>
       </div>
     );
@@ -128,14 +161,15 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
     <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.2 }}
       className="absolute right-0 top-0 bottom-0 z-20 w-80 border-l border-border bg-card flex flex-col overflow-y-auto">
       <PanelContent user={user} isMe={isMe} isOnline={isOnline} displayPresence={displayPresence}
-        badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} />
+        badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} toggleFollow={toggleFollow} toggleBlock={toggleBlock} updatingRelation={updatingRelation} />
     </motion.div>
   );
 }
 
-function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, onClose, startDm, dmStreak }: {
+function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, onClose, startDm, dmStreak, toggleFollow, toggleBlock, updatingRelation }: {
   user: any; isMe: boolean; isOnline: boolean; displayPresence: string;
   badges: string[]; links: string[]; onClose: () => void; startDm: () => void; dmStreak: number;
+  toggleFollow: () => void; toggleBlock: () => void; updatingRelation: boolean;
 }) {
   return (
     <>
@@ -166,6 +200,11 @@ function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, on
 
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-lg font-bold text-foreground">{user.username}</h2>
+          {!isMe && dmStreak > 0 && (
+            <span className="flex items-center gap-1 text-sm font-semibold text-orange-400">
+              <Flame className="h-4 w-4" /> {dmStreak}
+            </span>
+          )}
           <span className="text-xs font-semibold text-amber-400">{user.nassPoints || 0} NassPoints</span>
           {badges.length > 0 && (
             <div className="flex items-center gap-1">
@@ -186,11 +225,6 @@ function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, on
         <p className="text-xs text-muted-foreground mt-0.5">
           {PRESENCE_LABELS[displayPresence] || 'Offline'}
         </p>
-        {!isMe && dmStreak > 0 && (
-          <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-orange-400">
-            <Flame className="h-4 w-4" /> {dmStreak}
-          </p>
-        )}
 
         {user.customStatus && (
           <p className="mt-1 text-sm text-foreground/80">{user.customStatus}</p>
@@ -228,10 +262,22 @@ function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, on
         </div>
 
         {!isMe && (
-          <button onClick={startDm}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90">
-            <MessageCircle className="h-4 w-4" /> Send Message
-          </button>
+          <div className="mt-3 space-y-2">
+            <button onClick={startDm} disabled={user.isBlockedByMe}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50">
+              <MessageCircle className="h-4 w-4" /> Send Message
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={toggleFollow} disabled={updatingRelation || user.isBlockedByMe}
+                className="rounded-lg bg-secondary py-2 text-xs font-semibold text-foreground hover:bg-secondary/80 disabled:opacity-50">
+                {user.isFollowing ? 'Unfollow' : 'Follow'}
+              </button>
+              <button onClick={toggleBlock} disabled={updatingRelation}
+                className={`rounded-lg py-2 text-xs font-semibold ${user.isBlockedByMe ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>
+                {user.isBlockedByMe ? 'Unblock' : 'Block'}
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </>

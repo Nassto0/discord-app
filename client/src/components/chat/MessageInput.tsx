@@ -8,6 +8,7 @@ import { formatDuration } from '@/lib/utils';
 import { sounds } from '@/lib/sounds';
 import { Send, Mic, X, ImagePlus, Smile, PlusCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToastStore } from '@/stores/toastStore';
 
 interface MessageInputProps {
   conversationId: string;
@@ -29,6 +30,7 @@ export function MessageInput({ conversationId }: MessageInputProps) {
   const updateUser = useAuthStore((s) => s.updateUser);
   const { isRecording, duration, startRecording, stopRecording, cancelRecording } = useMediaRecorder();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pushToast = useToastStore((s) => s.push);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
@@ -55,7 +57,7 @@ export function MessageInput({ conversationId }: MessageInputProps) {
     if (!socket) return;
     socket.emit('message:send', { conversationId, content, type, fileUrl, replyToId: replyingTo?.id || null, fileDuration: fileDuration || null }, (resp: any) => {
       if (resp?.error && resp?.reason) {
-        alert(resp.reason);
+        pushToast(resp.reason, 'error');
         return;
       }
       const gain = type === 'image' || type === 'video' || type === 'voice' ? 3 : 1;
@@ -64,7 +66,7 @@ export function MessageInput({ conversationId }: MessageInputProps) {
     sounds.messageSent();
     setReplyingTo(null);
     socket.emit('typing:stop', { conversationId });
-  }, [conversationId, replyingTo, setReplyingTo]);
+  }, [conversationId, replyingTo, setReplyingTo, pushToast]);
 
   const handleSend = () => {
     if (!text.trim()) return;

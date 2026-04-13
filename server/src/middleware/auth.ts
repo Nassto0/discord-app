@@ -27,14 +27,21 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { isBanned: true, banReason: true },
+      select: { isBanned: true, banReason: true, timeoutUntil: true, timeoutReason: true },
     });
     if (!user) {
       res.status(401).json({ message: 'User not found' });
       return;
     }
     if (user.isBanned) {
-      res.status(403).json({ code: 'banned', message: user.banReason || 'Your account is banned.' });
+      res.status(403).json({ code: 'banned', message: `Ban reason: ${user.banReason || 'Your account is banned.'}` });
+      return;
+    }
+    if (user.timeoutUntil && user.timeoutUntil > new Date()) {
+      res.status(403).json({
+        code: 'timeout',
+        message: `Timeout reason: ${user.timeoutReason || 'You are timed out.'} (until ${user.timeoutUntil.toISOString()})`,
+      });
       return;
     }
     req.userId = decoded.userId;
@@ -54,13 +61,16 @@ export async function authenticateSocket(socket: Socket, next: (err?: Error) => 
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { isBanned: true, banReason: true },
+      select: { isBanned: true, banReason: true, timeoutUntil: true, timeoutReason: true },
     });
     if (!user) {
       return next(new Error('User not found'));
     }
     if (user.isBanned) {
-      return next(new Error(user.banReason || 'Account banned'));
+      return next(new Error(`Ban reason: ${user.banReason || 'Account banned'}`));
+    }
+    if (user.timeoutUntil && user.timeoutUntil > new Date()) {
+      return next(new Error(`Timeout reason: ${user.timeoutReason || 'You are timed out.'}`));
     }
     (socket as any).userId = decoded.userId;
     next();

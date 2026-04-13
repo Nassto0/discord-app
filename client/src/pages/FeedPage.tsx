@@ -3,10 +3,11 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { getInitials, getAvatarColor, formatTime, fileUrl } from '@/lib/utils';
-import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag } from 'lucide-react';
+import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag, Plus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSocket } from '@/hooks/useSocket';
 import { showNotification, sounds } from '@/lib/sounds';
+import { useToastStore } from '@/stores/toastStore';
 
 interface FeedPageProps {
   onUserClick: (userId: string) => void;
@@ -32,9 +33,14 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const [commentLoading, setCommentLoading] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [pointsByUser, setPointsByUser] = useState<Record<string, number>>({});
+  const pushToast = useToastStore((s) => s.push);
+  const [storyGroups, setStoryGroups] = useState<any[]>([]);
+  const [storyModal, setStoryModal] = useState<{ user: any; stories: any[]; index: number } | null>(null);
+  const storyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadPosts();
+    api.stories.list().then(setStoryGroups).catch(() => {});
     api.users.all().then((users) => {
       setAllUsers(users);
       const map: Record<string, number> = {};
@@ -142,7 +148,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
       setNewPost('');
       setImageUrl(null);
     } catch (err) {
-      alert((err as Error).message || 'Could not create post');
+      pushToast((err as Error).message || 'Could not create post', 'error');
     }
     finally { setPosting(false); }
   };
@@ -192,7 +198,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
       setCommentText({ ...commentText, [postId]: '' });
     } catch (err) {
       console.error('Comment error:', err);
-      alert((err as Error).message || 'Could not add comment');
+      pushToast((err as Error).message || 'Could not add comment', 'error');
     }
     finally { setCommentLoading(null); }
   };
@@ -218,6 +224,32 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
     finally { setUploading(false); e.target.value = ''; }
   };
 
+  const handleStoryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { url } = await api.uploads.upload(file);
+      await api.stories.create({ mediaUrl: url });
+      setStoryGroups(await api.stories.list());
+      pushToast('Story published for 24 hours.', 'success');
+    } catch (err) {
+      pushToast((err as Error).message || 'Could not publish story', 'error');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const openStory = async (group: any, index = 0) => {
+    setStoryModal({ user: group.user, stories: group.stories, index });
+    const story = group.stories[index];
+    if (story && !story.seen) {
+      await api.stories.view(story.id).catch(() => {});
+      setStoryGroups(await api.stories.list().catch(() => storyGroups));
+    }
+  };
+
   const handlePostContext = (e: React.MouseEvent, postId: string) => {
     e.preventDefault();
     setContextMenu({ id: postId, x: Math.min(e.clientX, window.innerWidth - 180), y: Math.min(e.clientY, window.innerHeight - 200) });
@@ -229,10 +261,10 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
     const details = window.prompt('Optional details (recommended):', '');
     try {
       await api.reports.create({ targetType: 'post', targetId: postId, reason: reason.trim(), details: details?.trim() || undefined });
-      alert('Report submitted. Thank you.');
+      pushToast('Report submitted. Thank you.', 'success');
     } catch (err) {
       console.error('Report post error:', err);
-      alert('Could not submit report. You may have already reported this.');
+      pushToast('Could not submit report. You may have already reported this.', 'error');
     }
   };
 
@@ -253,9 +285,29 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
         <div className="mx-auto max-w-2xl px-4 py-5 space-y-4">
           {(() => {
             const online = allUsers.filter((u) => u.id !== user?.id && onlineUsers.has(u.id));
-            if (online.length === 0) return null;
+            const hasStories = storyGroups.length > 0;
+            if (online.length === 0 && !hasStories) return null;
             return (
               <div className="flex gap-3 overflow-x-auto pb-1 px-1 scrollbar-none">
+                <input type="file" ref={storyInputRef} onChange={handleStoryUpload} accept="image/*,video/*" className="hidden" />
+                <button onClick={() => storyInputRef.current?.click()} className="flex flex-col items-center gap-1 shrink-0 group">
+                  <div className="relative flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-primary/60 bg-card">
+                    <Plus className="h-4 w-4 text-primary" />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">Your story</span>
+                </button>
+                {storyGroups.map((g) => (
+                  <button key={g.user.id} onClick={() => openStory(g)} className="flex flex-col items-center gap-1 shrink-0 group">
+                    <div className="relative">
+                      {g.user.avatar ? <img src={fileUrl(g.user.avatar)} alt="" className="h-12 w-12 rounded-full object-cover ring-2 ring-primary group-hover:ring-primary/70 transition-all" /> : (
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-full ${getAvatarColor(g.user.username)} text-sm font-semibold text-white ring-2 ring-primary group-hover:ring-primary/70 transition-all`}>
+                          {getInitials(g.user.username)}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground truncate max-w-[56px] group-hover:text-foreground transition-colors">{g.user.username}</span>
+                  </button>
+                ))}
                 {online.map((u) => (
                   <button key={u.id} onClick={() => onUserClick(u.id)} className="flex flex-col items-center gap-1 shrink-0 group">
                     <div className="relative">
@@ -475,6 +527,26 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {storyModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4">
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border bg-black">
+            <button onClick={() => setStoryModal(null)} className="absolute right-3 top-3 z-10 rounded-full bg-black/50 p-1.5 text-white">
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={fileUrl(storyModal.stories[storyModal.index]?.mediaUrl)}
+              alt=""
+              className="h-[70vh] w-full object-cover"
+            />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 text-white">
+              <p className="text-sm font-semibold">{storyModal.user.username}</p>
+              {storyModal.stories[storyModal.index]?.caption && <p className="text-xs opacity-90">{storyModal.stories[storyModal.index]?.caption}</p>}
+            </div>
+            <div className="absolute inset-y-0 left-0 w-1/2" onClick={() => setStoryModal((s) => s ? ({ ...s, index: Math.max(0, s.index - 1) }) : s)} />
+            <div className="absolute inset-y-0 right-0 w-1/2" onClick={() => setStoryModal((s) => s ? ({ ...s, index: Math.min(s.stories.length - 1, s.index + 1) }) : s)} />
           </div>
         </div>
       )}

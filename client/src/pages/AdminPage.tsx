@@ -7,6 +7,7 @@ import {
   Check, X, Trash2, Crown, ChevronDown, BarChart3, FileText, Gavel, Clock, Ban,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToastStore } from '@/stores/toastStore';
 
 interface AdminPageProps {
   onBack: () => void;
@@ -17,6 +18,7 @@ type ReportFilter = 'all' | 'pending' | 'reviewed' | 'dismissed';
 
 export function AdminPage({ onBack }: AdminPageProps) {
   const { user } = useAuthStore();
+  const pushToast = useToastStore((s) => s.push);
   const [tab, setTab] = useState<AdminTab>('overview');
 
   // Data state
@@ -173,7 +175,7 @@ export function AdminPage({ onBack }: AdminPageProps) {
       setUserActionLog((prev) => ({ ...prev, [moderationModal.userId]: logs }));
     } catch (err) {
       console.error('Moderation action failed:', err);
-      alert((err as Error).message || 'Moderation action failed');
+      pushToast((err as Error).message || 'Moderation action failed', 'error');
     } finally {
       setActionLoading(null);
       setModerationModal(null);
@@ -443,9 +445,9 @@ export function AdminPage({ onBack }: AdminPageProps) {
                                     Joined {formatTime(u.createdAt)}
                                   </span>
                                 </div>
-                                {u.isBanned && <p className="mt-1 text-xs text-red-400">Banned</p>}
-                                {u.mutedUntil && <p className="mt-1 text-xs text-amber-400">Muted until {formatTime(u.mutedUntil)}</p>}
-                                {u.timeoutUntil && <p className="mt-1 text-xs text-orange-400">Timed out until {formatTime(u.timeoutUntil)}</p>}
+                                {u.isBanned && <p className="mt-1 text-xs text-red-400">Banned{u.banReason ? ` - ${u.banReason}` : ''}</p>}
+                                {u.mutedUntil && <p className="mt-1 text-xs text-amber-400">Muted until {formatTime(u.mutedUntil)}{u.muteReason ? ` - ${u.muteReason}` : ''}</p>}
+                                {u.timeoutUntil && <p className="mt-1 text-xs text-orange-400">Timed out until {formatTime(u.timeoutUntil)}{u.timeoutReason ? ` - ${u.timeoutReason}` : ''}</p>}
                               </div>
 
                               {/* Role dropdown */}

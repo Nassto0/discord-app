@@ -13,7 +13,7 @@ conversationRouter.get('/', authenticateToken, async (req: AuthRequest, res: Res
         members: {
           include: {
             user: {
-              select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+              select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
             },
           },
         },
@@ -22,7 +22,7 @@ conversationRouter.get('/', authenticateToken, async (req: AuthRequest, res: Res
           take: 1,
           include: {
             sender: {
-              select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+              select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
             },
           },
         },
@@ -77,6 +77,19 @@ conversationRouter.post('/', authenticateToken, async (req: AuthRequest, res: Re
         res.status(400).json({ message: 'DM requires exactly one other member' });
         return;
       }
+      const targetId = String(memberIds[0]);
+      const blocked = await prisma.block.findFirst({
+        where: {
+          OR: [
+            { blockerId: req.userId!, blockedId: targetId },
+            { blockerId: targetId, blockedId: req.userId! },
+          ],
+        },
+      });
+      if (blocked) {
+        res.status(403).json({ message: 'Cannot create DM due to block settings' });
+        return;
+      }
 
       const existingDm = await prisma.conversation.findFirst({
         where: {
@@ -90,7 +103,7 @@ conversationRouter.post('/', authenticateToken, async (req: AuthRequest, res: Re
           members: {
             include: {
               user: {
-                select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+                select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
               },
             },
           },
@@ -99,7 +112,7 @@ conversationRouter.post('/', authenticateToken, async (req: AuthRequest, res: Re
             take: 1,
             include: {
               sender: {
-                select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+                select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
               },
             },
           },
@@ -145,7 +158,7 @@ conversationRouter.post('/', authenticateToken, async (req: AuthRequest, res: Re
         members: {
           include: {
             user: {
-              select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+              select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
             },
           },
         },
@@ -191,7 +204,7 @@ conversationRouter.post('/:id/members', authenticateToken, async (req: AuthReque
     });
     if (existing) { res.status(400).json({ message: 'Already a member' }); return; }
     await prisma.conversationMember.create({ data: { conversationId: id, userId: targetUserId, role: 'member' } });
-    const userSelect = { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true };
+    const userSelect = { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true };
     const members = await prisma.conversationMember.findMany({
       where: { conversationId: id },
       include: { user: { select: userSelect } },
@@ -247,12 +260,12 @@ conversationRouter.get('/:id/messages', authenticateToken, async (req: AuthReque
       orderBy: { createdAt: 'desc' },
       include: {
         sender: {
-          select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+          select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
         },
         replyTo: {
           include: {
             sender: {
-              select: { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true },
+              select: { id: true, username: true, avatar: true, status: true, lastSeen: true, createdAt: true },
             },
           },
         },

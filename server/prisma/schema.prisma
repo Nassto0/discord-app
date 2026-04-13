@@ -33,6 +33,7 @@ model User {
   timeoutReason  String?
   lastSeen     DateTime @default(now())
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   sentMessages         Message[]            @relation("sender")
   conversations        ConversationMember[]
@@ -42,9 +43,32 @@ model User {
   postLikes            PostLike[]
   postComments         PostComment[]        @relation("commentAuthor")
   reports              Report[]
+  stories              Story[]
+  notifications        Notification[]
+  messageReactions     MessageReaction[]
+  followsGiven         Follow[] @relation("followGiven")
+  followsReceived      Follow[] @relation("followReceived")
+  blocksGiven          Block[]  @relation("blockGiven")
+  blocksReceived       Block[]  @relation("blockReceived")
   dmStreaks             DmStreak[]
   adminActionsBy       AdminAction[] @relation("adminActor")
   adminActionsOn       AdminAction[] @relation("adminTarget")
+}
+
+model Story {
+  id        String   @id @default(uuid())
+  userId    String
+  mediaUrl  String
+  caption   String?
+  views     String   @default("[]")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([createdAt])
 }
 
 model AdminAction {
@@ -54,6 +78,7 @@ model AdminAction {
   action     String
   reason     String
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   admin  User @relation("adminActor", fields: [adminId], references: [id], onDelete: Cascade)
   target User @relation("adminTarget", fields: [targetId], references: [id], onDelete: Cascade)
@@ -73,8 +98,9 @@ model Report {
   reviewedBy  String?
   reviewNote  String?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
-  reporter User @relation(fields: [reporterId], references: [id])
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([createdAt])
@@ -87,6 +113,7 @@ model DmStreak {
   currentStreak   Int     @default(0)
   longestStreak   Int     @default(0)
   lastMessageDate String?
+  updatedAt       DateTime @default(now()) @updatedAt
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -100,24 +127,36 @@ model Post {
   content   String
   imageUrl  String?
   flagged   Boolean  @default(false)
+  deletedAt DateTime?
   likes     PostLike[]
   comments  PostComment[]
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
-  author User @relation("postAuthor", fields: [authorId], references: [id])
+  author User @relation("postAuthor", fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+  @@index([authorId])
 }
 
 model PostComment {
   id        String   @id @default(uuid())
   postId    String
   authorId  String
+  parentId  String?
   content   String
+  deletedAt DateTime?
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author User @relation("commentAuthor", fields: [authorId], references: [id])
+  author User @relation("commentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parent  PostComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies PostComment[] @relation("CommentReplies")
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([parentId])
 }
 
 model PostLike {
@@ -136,14 +175,19 @@ model Conversation {
   type      String
   name      String?
   avatar    String?
+  settings  String   @default("{}")
   createdBy String
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
-  creator  User                 @relation("creator", fields: [createdBy], references: [id])
+  creator  User                 @relation("creator", fields: [createdBy], references: [id], onDelete: Cascade)
   members  ConversationMember[]
   messages Message[]
   calls    CallSession[]
   dmStreaks DmStreak[]
+
+  @@index([type])
+  @@index([createdBy])
 }
 
 model ConversationMember {
@@ -157,6 +201,7 @@ model ConversationMember {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
+  @@index([userId])
 }
 
 model Message {
@@ -171,15 +216,22 @@ model Message {
   readBy         String   @default("[]")
   reactions      String   @default("{}")
   flagged        Boolean  @default(false)
+  pinned         Boolean  @default(false)
+  deletedAt      DateTime?
   editedAt       DateTime?
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User         @relation("sender", fields: [senderId], references: [id])
-  replyTo      Message?     @relation("replies", fields: [replyToId], references: [id])
+  sender       User         @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo      Message?     @relation("replies", fields: [replyToId], references: [id], onDelete: Cascade)
   replies      Message[]    @relation("replies")
+  attachments  MessageAttachment[]
+  messageReactions MessageReaction[]
 
   @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@index([replyToId])
 }
 
 model CallSession {
@@ -190,7 +242,86 @@ model CallSession {
   startedAt      DateTime @default(now())
   endedAt        DateTime?
   participants   String   @default("[]")
+  updatedAt      DateTime @default(now()) @updatedAt
 
-  conversation Conversation @relation(fields: [conversationId], references: [id])
-  starter      User         @relation("callStarter", fields: [startedBy], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  starter      User         @relation("callStarter", fields: [startedBy], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([startedBy])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  data      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([read, createdAt])
+}
+
+model MessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String
+  url       String
+  type      String
+  size      Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  follower  User @relation("followGiven", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("followReceived", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  blocker User @relation("blockGiven", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("blockReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }

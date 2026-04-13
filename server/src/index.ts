@@ -11,6 +11,7 @@ import { uploadRouter } from './routes/uploads';
 import { postRouter } from './routes/posts';
 import { adminRouter } from './routes/admin';
 import { reportRouter } from './routes/reports';
+import { storyRouter } from './routes/stories';
 import { setupSocketHandlers, getOnlineUsers } from './socket';
 import { authenticateSocket, prisma } from './middleware/auth';
 
@@ -52,6 +53,7 @@ app.use('/api/uploads', uploadRouter);
 app.use('/api/posts', postRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/reports', reportRouter);
+app.use('/api/stories', storyRouter);
 
 // Streak endpoint: get streaks for a conversation
 app.get('/api/streaks/:conversationId', async (req, res) => {

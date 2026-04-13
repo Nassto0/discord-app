@@ -6,6 +6,7 @@ import { useCallStore, getStoredCall } from '@/stores/callStore';
 import { sounds, showNotification, requestNotificationPermission } from '@/lib/sounds';
 import { api } from '@/lib/api';
 import { startWebRTC, hangup } from './useWebRTC';
+import { useToastStore } from '@/stores/toastStore';
 
 let globalSocket: Socket | null = null;
 
@@ -81,7 +82,7 @@ export function useSocket() {
       useChatStore.getState().setUserStatus(data.userId, data.status);
     });
     socket.on('auth:force-logout', (payload) => {
-      alert(payload?.reason || 'You have been logged out by moderation action.');
+      useToastStore.getState().push(payload?.reason || 'You have been logged out by moderation action.', 'error');
       useAuthStore.getState().logout();
       window.location.href = '/';
     });

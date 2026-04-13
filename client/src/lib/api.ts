@@ -35,6 +35,12 @@ export const api = {
     all: () => request<any[]>('/users/all'),
     get: (id: string) => request<any>(`/users/${id}`),
     updateProfile: (data: any) => request<any>('/users/profile', { method: 'PUT', body: JSON.stringify(data) }),
+    follow: (id: string) => request<any>(`/users/${id}/follow`, { method: 'POST' }),
+    unfollow: (id: string) => request<any>(`/users/${id}/follow`, { method: 'DELETE' }),
+    block: (id: string) => request<any>(`/users/${id}/block`, { method: 'POST' }),
+    unblock: (id: string) => request<any>(`/users/${id}/block`, { method: 'DELETE' }),
+    notifications: () => request<any[]>('/users/notifications/list'),
+    markNotificationRead: (id: string) => request<any>(`/users/notifications/${id}/read`, { method: 'POST' }),
   },
   conversations: {
     list: () => request<any[]>('/conversations'),
@@ -74,6 +80,12 @@ export const api = {
   reports: {
     create: (data: { targetType: string; targetId: string; reason: string; details?: string }) =>
       request<any>('/reports', { method: 'POST', body: JSON.stringify(data) }),
+  },
+  stories: {
+    list: () => request<any[]>('/stories'),
+    create: (data: { mediaUrl: string; caption?: string }) =>
+      request<any>('/stories', { method: 'POST', body: JSON.stringify(data) }),
+    view: (id: string) => request<any>(`/stories/${id}/view`, { method: 'POST' }),
   },
   admin: {
     stats: () => request<any>('/admin/stats'),

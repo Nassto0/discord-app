@@ -8,6 +8,7 @@ import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckChe
 import { VoicePlayer } from '@/components/media/VoicePlayer';
 import { MediaPreview } from '@/components/media/MediaPreview';
 import { motion } from 'framer-motion';
+import { useToastStore } from '@/stores/toastStore';
 
 const URL_REGEX = /https?:\/\/[^\s<>'")\]]+/g;
 
@@ -68,6 +69,7 @@ interface MessageBubbleProps {
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🎉'];
 
 export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: MessageBubbleProps) {
+  const pushToast = useToastStore((s) => s.push);
   const setReplyingTo = useChatStore((s) => s.setReplyingTo);
   const userId = useAuthStore((s) => s.user?.id);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -206,11 +208,11 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
         reason: reason.trim(),
         details: details?.trim() || undefined,
       });
-      alert('Report submitted. Thank you.');
+      pushToast('Report submitted. Thank you.', 'success');
       setContextMenu(null);
     } catch (err) {
       console.error('Report message error:', err);
-      alert('Could not submit report. You may have already reported this.');
+      pushToast('Could not submit report. You may have already reported this.', 'error');
     }
   };
 

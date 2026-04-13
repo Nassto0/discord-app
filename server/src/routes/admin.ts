@@ -79,7 +79,7 @@ adminRouter.get('/users', async (_req: AuthRequest, res: Response) => {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true, username: true, email: true, avatar: true, role: true, status: true,
-        createdAt: true, lastSeen: true, bio: true, nassPoints: true, mutedUntil: true, timeoutUntil: true, isBanned: true,
+        createdAt: true, lastSeen: true, bio: true, nassPoints: true, mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true, isBanned: true, banReason: true,
         _count: { select: { posts: true, sentMessages: true } },
       },
     });
