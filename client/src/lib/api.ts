@@ -15,7 +15,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message);
+    const err = new Error(error.message || 'Request failed') as Error & { code?: string };
+    if (error.code) err.code = error.code;
+    throw err;
   }
   return res.json();
 }
@@ -69,4 +71,26 @@ export const api = {
       request<any>(`/posts/${postId}/comments`, { method: 'POST', body: JSON.stringify({ content }) }),
   },
   online: () => request<string[]>('/online'),
+  reports: {
+    create: (data: { targetType: string; targetId: string; reason: string; details?: string }) =>
+      request<any>('/reports', { method: 'POST', body: JSON.stringify(data) }),
+  },
+  admin: {
+    stats: () => request<any>('/admin/stats'),
+    reports: (status?: string) => request<any[]>(`/admin/reports${status ? `?status=${status}` : ''}`),
+    updateReport: (id: string, data: { status: string; reviewNote?: string }) =>
+      request<any>(`/admin/reports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    users: () => request<any[]>('/admin/users'),
+    updateRole: (id: string, role: string) =>
+      request<any>(`/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
+    moderateUser: (id: string, data: { action: string; reason: string; minutes?: number }) =>
+      request<any>(`/admin/users/${id}/moderate`, { method: 'POST', body: JSON.stringify(data) }),
+    userActions: (id: string) => request<any[]>(`/admin/users/${id}/actions`),
+    deletePost: (id: string) => request<any>(`/admin/posts/${id}`, { method: 'DELETE' }),
+    deleteMessage: (id: string) => request<any>(`/admin/messages/${id}`, { method: 'DELETE' }),
+    flagged: () => request<any>('/admin/flagged'),
+  },
+  streaks: {
+    get: (conversationId: string) => request<any[]>(`/streaks/${conversationId}`),
+  },
 };

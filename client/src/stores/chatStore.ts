@@ -9,6 +9,7 @@ interface User {
   status: string;
   lastSeen: string;
   createdAt: string;
+  nassPoints?: number;
 }
 
 interface Message {

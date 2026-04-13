@@ -3,7 +3,8 @@ import { formatMessageTime, getInitials, getAvatarColor, fileUrl } from '@/lib/u
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { getSocket } from '@/hooks/useSocket';
-import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckCheck, Pencil, Share2 } from 'lucide-react';
+import { api } from '@/lib/api';
+import { Reply, Copy, Trash2, SmilePlus, Phone, PhoneOff, Video, Check, CheckCheck, Pencil, Share2, Flag } from 'lucide-react';
 import { VoicePlayer } from '@/components/media/VoicePlayer';
 import { MediaPreview } from '@/components/media/MediaPreview';
 import { motion } from 'framer-motion';
@@ -192,6 +193,25 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
       fileDuration: message.fileDuration || null,
     });
     setShowForward(false);
+  };
+
+  const handleReport = async () => {
+    const reason = window.prompt('Report reason (spam, harassment, nudity, violence, other):', 'other');
+    if (!reason) return;
+    const details = window.prompt('Optional details (recommended):', '');
+    try {
+      await api.reports.create({
+        targetType: 'message',
+        targetId: message.id,
+        reason: reason.trim(),
+        details: details?.trim() || undefined,
+      });
+      alert('Report submitted. Thank you.');
+      setContextMenu(null);
+    } catch (err) {
+      console.error('Report message error:', err);
+      alert('Could not submit report. You may have already reported this.');
+    }
   };
 
   const getConvName = (c: any) => {
@@ -404,6 +424,12 @@ export function MessageBubble({ message, isOwn, showAvatar, onUserClick }: Messa
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary">
               <Share2 className="h-4 w-4 text-muted-foreground" /> Forward
             </button>
+            {!isOwn && (
+              <button onClick={handleReport}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary">
+                <Flag className="h-4 w-4 text-muted-foreground" /> Report Message
+              </button>
+            )}
             {isOwn && (
               <>
                 {message.type === 'text' && message.content && (

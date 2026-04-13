@@ -1,13 +1,14 @@
-import { MessageSquare, Home, Settings } from 'lucide-react';
+import { MessageSquare, Home, Settings, Shield } from 'lucide-react';
 
 interface MobileNavProps {
   showSidebar: boolean;
   onToggleSidebar: () => void;
   activeSection: string;
   onSectionChange: (s: any) => void;
+  canAccessAdmin?: boolean;
 }
 
-export function MobileNav({ onToggleSidebar, activeSection, onSectionChange }: MobileNavProps) {
+export function MobileNav({ onToggleSidebar, activeSection, onSectionChange, canAccessAdmin = false }: MobileNavProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-sidebar/95 backdrop-blur-lg" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="flex items-center justify-around py-2">
@@ -20,6 +21,11 @@ export function MobileNav({ onToggleSidebar, activeSection, onSectionChange }: M
         <button onClick={() => onSectionChange('settings')} className={`flex flex-col items-center gap-0.5 px-4 py-1.5 transition-colors ${activeSection === 'settings' ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}>
           <Settings className="h-5 w-5" /><span className="text-[10px] font-medium">Settings</span>
         </button>
+        {canAccessAdmin && (
+          <button onClick={() => onSectionChange('admin')} className={`flex flex-col items-center gap-0.5 px-4 py-1.5 transition-colors ${activeSection === 'admin' ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}>
+            <Shield className="h-5 w-5" /><span className="text-[10px] font-medium">Admin</span>
+          </button>
+        )}
       </div>
     </div>
   );

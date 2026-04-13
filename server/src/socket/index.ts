@@ -1,9 +1,11 @@
 import { Server, Socket } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
+import { checkContent, checkUrl } from '../lib/automod';
 
 const prisma = new PrismaClient();
 
 const onlineUsers = new Map<string, Set<string>>();
+let ioRef: Server | null = null;
 
 function getUserId(socket: Socket): string {
   return (socket as any).userId;
@@ -11,6 +13,17 @@ function getUserId(socket: Socket): string {
 
 export function getOnlineUsers(): string[] {
   return [...onlineUsers.keys()];
+}
+
+export async function forceLogoutUser(userId: string, reason: string) {
+  if (!ioRef) return;
+  const sockets = onlineUsers.get(userId);
+  if (!sockets) return;
+  for (const sid of sockets) {
+    ioRef.to(sid).emit('auth:force-logout', { reason });
+    const target = ioRef.sockets.sockets.get(sid);
+    if (target) target.disconnect(true);
+  }
 }
 
 function serializeUser(u: any) {
@@ -39,9 +52,10 @@ function serializeMessage(m: any) {
   };
 }
 
-const userSelect = { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true, presence: true, bio: true, banner: true, customStatus: true, links: true, badges: true };
+const userSelect = { id: true, username: true, email: true, avatar: true, status: true, lastSeen: true, createdAt: true, presence: true, bio: true, banner: true, customStatus: true, links: true, badges: true, nassPoints: true };
 
 export function setupSocketHandlers(io: Server) {
+  ioRef = io;
   io.on('connection', async (socket) => {
     const userId = getUserId(socket);
     console.log(`User connected: ${userId} (${socket.id})`);
@@ -86,7 +100,33 @@ export function setupSocketHandlers(io: Server) {
 
     socket.on('message:send', async (data, callback) => {
       try {
+        const me = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { isBanned: true, banReason: true, mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true },
+        });
+        if (me?.isBanned) {
+          if (callback) callback({ error: true, reason: me.banReason || 'Account banned' });
+          socket.emit('auth:force-logout', { reason: me.banReason || 'Your account has been banned.' });
+          socket.disconnect(true);
+          return;
+        }
+        const now = new Date();
+        if (me?.timeoutUntil && me.timeoutUntil > now) {
+          if (callback) callback({ error: true, reason: me.timeoutReason || 'You are timed out.' });
+          return;
+        }
+        if (me?.mutedUntil && me.mutedUntil > now) {
+          if (callback) callback({ error: true, reason: me.muteReason || 'You are muted.' });
+          return;
+        }
+
         const { conversationId, content, type, fileUrl, replyToId, fileDuration } = data;
+
+        // Auto-mod check
+        const textCheck = checkContent(content);
+        const urlCheck = checkUrl(fileUrl);
+        const shouldDeleteSoon = textCheck.blocked || urlCheck.blocked;
+        const shouldFlag = textCheck.flagged || urlCheck.flagged || shouldDeleteSoon;
 
         const message = await prisma.message.create({
           data: {
@@ -98,6 +138,7 @@ export function setupSocketHandlers(io: Server) {
             fileDuration: fileDuration || null,
             replyToId: replyToId || null,
             readBy: JSON.stringify([userId]),
+            flagged: shouldFlag,
           },
           include: {
             sender: { select: userSelect },
@@ -109,6 +150,57 @@ export function setupSocketHandlers(io: Server) {
 
         io.to(`conv:${conversationId}`).emit('message:received', serialized);
         if (callback) callback(serialized);
+
+        if (!shouldDeleteSoon) {
+          const pointsGain = type === 'image' || type === 'video' || type === 'voice' ? 3 : 1;
+          await prisma.user.update({
+            where: { id: userId },
+            data: { nassPoints: { increment: pointsGain } },
+          });
+        }
+
+        // Allow send first, then auto-delete disallowed content shortly after.
+        if (shouldDeleteSoon) {
+          setTimeout(async () => {
+            try {
+              await prisma.message.delete({ where: { id: message.id } });
+              io.to(`conv:${conversationId}`).emit('message:deleted', { messageId: message.id, conversationId });
+            } catch {
+              // Ignore if already removed.
+            }
+          }, 2500);
+        }
+
+        // Update DM streak
+        try {
+          const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { type: true, members: { select: { userId: true } } },
+          });
+          if (conv?.type === 'dm') {
+            const today = new Date().toISOString().split('T')[0];
+            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+            for (const member of conv.members) {
+              const streak = await prisma.dmStreak.upsert({
+                where: { conversationId_userId: { conversationId, userId: member.userId } },
+                create: { conversationId, userId: member.userId, currentStreak: 1, longestStreak: 1, lastMessageDate: today },
+                update: {},
+              });
+              if (streak.lastMessageDate !== today) {
+                const newStreak = streak.lastMessageDate === yesterday ? streak.currentStreak + 1 : 1;
+                await prisma.dmStreak.update({
+                  where: { id: streak.id },
+                  data: { currentStreak: newStreak, longestStreak: Math.max(newStreak, streak.longestStreak), lastMessageDate: today },
+                });
+                io.to(`conv:${conversationId}`).emit('streak:updated', { conversationId, userId: member.userId, currentStreak: newStreak });
+              } else {
+                io.to(`conv:${conversationId}`).emit('streak:updated', { conversationId, userId: member.userId, currentStreak: streak.currentStreak });
+              }
+            }
+          }
+        } catch (streakErr) {
+          console.error('Streak update error:', streakErr);
+        }
       } catch (error) {
         console.error('Message send error:', error);
       }

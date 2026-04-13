@@ -20,6 +20,17 @@ model User {
   customStatus String?
   badges       String   @default("[]")
   links        String   @default("[]")
+  role         String   @default("user")
+  postStreak     Int    @default(0)
+  postStreakBest Int    @default(0)
+  postStreakDate String?
+  nassPoints     Int      @default(0)
+  isBanned       Boolean  @default(false)
+  banReason      String?
+  mutedUntil     DateTime?
+  muteReason     String?
+  timeoutUntil   DateTime?
+  timeoutReason  String?
   lastSeen     DateTime @default(now())
   createdAt    DateTime @default(now())
 
@@ -30,6 +41,57 @@ model User {
   posts                Post[]               @relation("postAuthor")
   postLikes            PostLike[]
   postComments         PostComment[]        @relation("commentAuthor")
+  reports              Report[]
+  dmStreaks             DmStreak[]
+  adminActionsBy       AdminAction[] @relation("adminActor")
+  adminActionsOn       AdminAction[] @relation("adminTarget")
+}
+
+model AdminAction {
+  id         String   @id @default(uuid())
+  adminId    String
+  targetId   String
+  action     String
+  reason     String
+  createdAt  DateTime @default(now())
+
+  admin  User @relation("adminActor", fields: [adminId], references: [id], onDelete: Cascade)
+  target User @relation("adminTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([targetId, createdAt])
+  @@index([adminId, createdAt])
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  reporterId  String
+  targetType  String
+  targetId    String
+  reason      String
+  details     String?
+  status      String   @default("pending")
+  reviewedBy  String?
+  reviewNote  String?
+  createdAt   DateTime @default(now())
+
+  reporter User @relation(fields: [reporterId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DmStreak {
+  id              String  @id @default(uuid())
+  conversationId  String
+  userId          String
+  currentStreak   Int     @default(0)
+  longestStreak   Int     @default(0)
+  lastMessageDate String?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
 }
 
 model Post {
@@ -37,6 +99,7 @@ model Post {
   authorId  String
   content   String
   imageUrl  String?
+  flagged   Boolean  @default(false)
   likes     PostLike[]
   comments  PostComment[]
   createdAt DateTime @default(now())
@@ -80,6 +143,7 @@ model Conversation {
   members  ConversationMember[]
   messages Message[]
   calls    CallSession[]
+  dmStreaks DmStreak[]
 }
 
 model ConversationMember {
@@ -106,6 +170,7 @@ model Message {
   replyToId      String?
   readBy         String   @default("[]")
   reactions      String   @default("{}")
+  flagged        Boolean  @default(false)
   editedAt       DateTime?
   createdAt      DateTime @default(now())
 

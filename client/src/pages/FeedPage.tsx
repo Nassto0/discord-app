@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { getInitials, getAvatarColor, formatTime, fileUrl } from '@/lib/utils';
-import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSocket } from '@/hooks/useSocket';
 import { showNotification, sounds } from '@/lib/sounds';
@@ -14,6 +14,7 @@ interface FeedPageProps {
 
 export function FeedPage({ onUserClick }: FeedPageProps) {
   const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const onlineUsers = useChatStore((s) => s.onlineUsers);
   const [posts, setPosts] = useState<any[]>([]);
   const [newPost, setNewPost] = useState('');
@@ -30,11 +31,26 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [commentLoading, setCommentLoading] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [pointsByUser, setPointsByUser] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadPosts();
-    api.users.all().then(setAllUsers).catch(() => {});
+    api.users.all().then((users) => {
+      setAllUsers(users);
+      const map: Record<string, number> = {};
+      for (const u of users) map[u.id] = u.nassPoints || 0;
+      if (user?.id) map[user.id] = Math.max(map[user.id] || 0, user.nassPoints || 0);
+      setPointsByUser(map);
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setPointsByUser((prev) => ({
+      ...prev,
+      [user.id]: Math.max(prev[user.id] || 0, user.nassPoints || 0),
+    }));
+  }, [user?.id, user?.nassPoints]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -42,6 +58,12 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
 
     const onNewPost = (post: any) => {
       setPosts((prev) => prev.find((p) => p.id === post.id) ? prev : [{ ...post, comments: post.comments || [] }, ...prev]);
+      if (post?.authorId) {
+        setPointsByUser((prev) => ({
+          ...prev,
+          [post.authorId]: Math.max(prev[post.authorId] || 0, post.author?.nassPoints || 0),
+        }));
+      }
       if (post.authorId !== user?.id) {
         sounds.notification();
         showNotification(post.author?.username || 'Someone', 'Published a new post');
@@ -111,10 +133,17 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
     try {
       const post = await api.posts.create({ content: newPost.trim(), imageUrl: imageUrl || undefined });
       setPosts([{ ...post, comments: [] }, ...posts]);
+      updateUser({ nassPoints: (user?.nassPoints || 0) + 10 } as any);
+      setPointsByUser((prev) => ({
+        ...prev,
+        [post.authorId]: Math.max(prev[post.authorId] || 0, post.author?.nassPoints || 0, (user?.nassPoints || 0) + 10),
+      }));
       getSocket()?.emit('post:new', post);
       setNewPost('');
       setImageUrl(null);
-    } catch {}
+    } catch (err) {
+      alert((err as Error).message || 'Could not create post');
+    }
     finally { setPosting(false); }
   };
 
@@ -163,6 +192,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
       setCommentText({ ...commentText, [postId]: '' });
     } catch (err) {
       console.error('Comment error:', err);
+      alert((err as Error).message || 'Could not add comment');
     }
     finally { setCommentLoading(null); }
   };
@@ -191,6 +221,19 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const handlePostContext = (e: React.MouseEvent, postId: string) => {
     e.preventDefault();
     setContextMenu({ id: postId, x: Math.min(e.clientX, window.innerWidth - 180), y: Math.min(e.clientY, window.innerHeight - 200) });
+  };
+
+  const handleReportPost = async (postId: string) => {
+    const reason = window.prompt('Report reason (spam, harassment, nudity, violence, other):', 'other');
+    if (!reason) return;
+    const details = window.prompt('Optional details (recommended):', '');
+    try {
+      await api.reports.create({ targetType: 'post', targetId: postId, reason: reason.trim(), details: details?.trim() || undefined });
+      alert('Report submitted. Thank you.');
+    } catch (err) {
+      console.error('Report post error:', err);
+      alert('Could not submit report. You may have already reported this.');
+    }
   };
 
   return (
@@ -246,7 +289,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && newPost.trim()) { e.preventDefault(); handlePost(); } }} />
                 {imageUrl && (
                   <div className="relative mt-2 inline-block">
-                    <img src={fileUrl(imageUrl)} alt="" className="h-40 rounded-xl object-cover border border-border" />
+                    <img src={fileUrl(imageUrl)} alt="" className="h-40 rounded-xl object-cover border border-border" onError={() => setImageUrl(null)} />
                     <button onClick={() => setImageUrl(null)}
                       className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-card text-muted-foreground hover:text-foreground border border-border text-xs font-bold">×</button>
                   </div>
@@ -297,6 +340,9 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <button onClick={() => onUserClick(post.authorId)} className="text-sm font-semibold text-foreground hover:underline">{post.author.username}</button>
+                          <span className="text-[11px] font-semibold text-amber-400">
+                            {Math.max(pointsByUser[post.authorId] || 0, post.author.nassPoints || 0, post.authorId === user?.id ? (user?.nassPoints || 0) : 0)} NassPoints
+                          </span>
                           <span className="text-[11px] text-muted-foreground">{formatTime(post.createdAt)}</span>
                         </div>
                         <p className="mt-1.5 whitespace-pre-wrap text-[14px] text-foreground/90 leading-relaxed">{post.content}</p>
@@ -304,7 +350,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
                     </div>
                     {post.imageUrl && (
                       <div className="mt-3 ml-[52px]">
-                        <img src={fileUrl(post.imageUrl)} alt="" className="max-h-96 rounded-xl object-cover border border-border" />
+                        <img src={fileUrl(post.imageUrl)} alt="" className="max-h-96 rounded-xl object-cover border border-border" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                       </div>
                     )}
                   </div>
@@ -414,6 +460,12 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary">
               <Heart className="h-4 w-4 text-muted-foreground" /> Like Post
             </button>
+            {posts.find((p) => p.id === contextMenu.id)?.authorId !== user?.id && (
+              <button onClick={() => { handleReportPost(contextMenu.id); setContextMenu(null); }}
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary">
+                <Flag className="h-4 w-4 text-muted-foreground" /> Report Post
+              </button>
+            )}
             {posts.find((p) => p.id === contextMenu.id)?.authorId === user?.id && (
               <>
                 <div className="h-px bg-border my-1" />

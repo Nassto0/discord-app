@@ -3,7 +3,12 @@ import { prisma, authenticateToken, AuthRequest } from '../middleware/auth';
 
 export const userRouter = Router();
 
-const userSelect = { id: true, username: true, email: true, avatar: true, banner: true, bio: true, status: true, presence: true, customStatus: true, badges: true, links: true, lastSeen: true, createdAt: true };
+const userSelect = {
+  id: true, username: true, email: true, avatar: true, banner: true, bio: true,
+  status: true, presence: true, customStatus: true, badges: true, links: true,
+  nassPoints: true, mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true,
+  lastSeen: true, createdAt: true,
+};
 
 userRouter.get('/all', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -12,7 +17,13 @@ userRouter.get('/all', authenticateToken, async (req: AuthRequest, res: Response
       select: userSelect,
       orderBy: { username: 'asc' },
     });
-    res.json(users.map((u) => ({ ...u, lastSeen: u.lastSeen.toISOString(), createdAt: u.createdAt.toISOString() })));
+    res.json(users.map((u) => ({
+      ...u,
+      mutedUntil: u.mutedUntil ? u.mutedUntil.toISOString() : null,
+      timeoutUntil: u.timeoutUntil ? u.timeoutUntil.toISOString() : null,
+      lastSeen: u.lastSeen.toISOString(),
+      createdAt: u.createdAt.toISOString(),
+    })));
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -27,7 +38,13 @@ userRouter.get('/search', authenticateToken, async (req: AuthRequest, res: Respo
       select: userSelect,
       take: 20,
     });
-    res.json(users.map((u) => ({ ...u, lastSeen: u.lastSeen.toISOString(), createdAt: u.createdAt.toISOString() })));
+    res.json(users.map((u) => ({
+      ...u,
+      mutedUntil: u.mutedUntil ? u.mutedUntil.toISOString() : null,
+      timeoutUntil: u.timeoutUntil ? u.timeoutUntil.toISOString() : null,
+      lastSeen: u.lastSeen.toISOString(),
+      createdAt: u.createdAt.toISOString(),
+    })));
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -37,7 +54,13 @@ userRouter.get('/:id', authenticateToken, async (req: AuthRequest, res: Response
   try {
     const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: userSelect });
     if (!user) { res.status(404).json({ message: 'User not found' }); return; }
-    res.json({ ...user, lastSeen: user.lastSeen.toISOString(), createdAt: user.createdAt.toISOString() });
+    res.json({
+      ...user,
+      mutedUntil: user.mutedUntil ? user.mutedUntil.toISOString() : null,
+      timeoutUntil: user.timeoutUntil ? user.timeoutUntil.toISOString() : null,
+      lastSeen: user.lastSeen.toISOString(),
+      createdAt: user.createdAt.toISOString(),
+    });
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -58,7 +81,13 @@ userRouter.put('/profile', authenticateToken, async (req: AuthRequest, res: Resp
     if (links !== undefined) data.links = typeof links === 'string' ? links : JSON.stringify(links);
 
     const user = await prisma.user.update({ where: { id: req.userId }, data, select: userSelect });
-    res.json({ ...user, lastSeen: user.lastSeen.toISOString(), createdAt: user.createdAt.toISOString() });
+    res.json({
+      ...user,
+      mutedUntil: user.mutedUntil ? user.mutedUntil.toISOString() : null,
+      timeoutUntil: user.timeoutUntil ? user.timeoutUntil.toISOString() : null,
+      lastSeen: user.lastSeen.toISOString(),
+      createdAt: user.createdAt.toISOString(),
+    });
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }

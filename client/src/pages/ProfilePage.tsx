@@ -411,6 +411,9 @@ const WALLPAPERS = [
 
 function ChatWallpaper() {
   const [selected, setSelected] = useState(() => localStorage.getItem('chat-wallpaper') || 'none');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const customUrl = selected.startsWith('custom:') ? selected.replace('custom:', '') : null;
 
   const apply = (id: string) => {
     setSelected(id);
@@ -418,12 +421,45 @@ function ChatWallpaper() {
     window.dispatchEvent(new Event('wallpaper-changed'));
   };
 
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const { url } = await api.uploads.upload(file);
+      apply(`custom:${url}`);
+    } catch (err) {
+      console.error('Wallpaper upload failed:', err);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-border bg-card/30 p-5">
       <div className="mb-4">
         <p className="text-sm font-semibold text-foreground">Chat Wallpaper</p>
-        <p className="text-xs text-muted-foreground mt-1">Add a pattern to your chat background</p>
+        <p className="text-xs text-muted-foreground mt-1">Add a pattern or upload your own image wallpaper</p>
       </div>
+      <div className="mb-3 flex items-center gap-2">
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-60">
+          {uploading ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" /> : <ImagePlus className="h-3.5 w-3.5" />}
+          Upload Wallpaper
+        </button>
+        {customUrl && (
+          <button onClick={() => apply('none')} className="text-xs text-muted-foreground hover:text-foreground">
+            Clear custom
+          </button>
+        )}
+      </div>
+      {customUrl && (
+        <div className="mb-3 h-24 rounded-xl border border-border bg-card p-1">
+          <img src={fileUrl(customUrl)} alt="Custom wallpaper preview" className="h-full w-full rounded-lg object-cover" />
+        </div>
+      )}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {WALLPAPERS.map((w) => (
           <button key={w.id} onClick={() => apply(w.id)}

@@ -80,6 +80,11 @@ export function useSocket() {
       useChatStore.getState().setUserOnline(data.userId, data.status !== 'offline');
       useChatStore.getState().setUserStatus(data.userId, data.status);
     });
+    socket.on('auth:force-logout', (payload) => {
+      alert(payload?.reason || 'You have been logged out by moderation action.');
+      useAuthStore.getState().logout();
+      window.location.href = '/';
+    });
 
     socket.on('conversation:created', (conv) => {
       useChatStore.getState().addConversation(conv);

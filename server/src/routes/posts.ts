@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
 import { prisma, authenticateToken, AuthRequest } from '../middleware/auth';
+import { checkContent, checkUrl } from '../lib/automod';
 
 export const postRouter = Router();
 
-const userSelect = { id: true, username: true, email: true, avatar: true, banner: true, bio: true, status: true, customStatus: true, lastSeen: true, createdAt: true };
+const userSelect = { id: true, username: true, email: true, avatar: true, banner: true, bio: true, status: true, customStatus: true, nassPoints: true, lastSeen: true, createdAt: true };
 
 postRouter.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -43,6 +44,24 @@ postRouter.get('/', authenticateToken, async (req: AuthRequest, res: Response) =
 
 postRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const me = await prisma.user.findUnique({
+      where: { id: req.userId! },
+      select: { isBanned: true, banReason: true, mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true },
+    });
+    const now = new Date();
+    if (me?.isBanned) {
+      res.status(403).json({ code: 'banned', message: me.banReason || 'Your account is banned.' });
+      return;
+    }
+    if (me?.timeoutUntil && me.timeoutUntil > now) {
+      res.status(403).json({ code: 'timeout', message: me.timeoutReason || 'You are timed out.' });
+      return;
+    }
+    if (me?.mutedUntil && me.mutedUntil > now) {
+      res.status(403).json({ code: 'muted', message: me.muteReason || 'You are muted.' });
+      return;
+    }
+
     const { content, imageUrl } = req.body;
     if (!content?.trim()) {
       res.status(400).json({ message: 'Content is required' });
@@ -53,8 +72,38 @@ postRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response) 
       return;
     }
 
+    // Auto-mod check
+    const textCheck = checkContent(content);
+    const urlCheck = checkUrl(imageUrl);
+    const shouldDeleteSoon = textCheck.blocked || urlCheck.blocked;
+    const shouldFlag = textCheck.flagged || urlCheck.flagged || shouldDeleteSoon;
+
+    // Update post streak
+    const today = new Date().toISOString().split('T')[0];
+    const author = await prisma.user.findUnique({ where: { id: req.userId! }, select: { postStreak: true, postStreakBest: true, postStreakDate: true } });
+    if (author) {
+      if (author.postStreakDate !== today) {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const newStreak = author.postStreakDate === yesterday ? author.postStreak + 1 : 1;
+        await prisma.user.update({
+          where: { id: req.userId! },
+          data: {
+            postStreak: newStreak,
+            postStreakBest: Math.max(newStreak, author.postStreakBest),
+            postStreakDate: today,
+            nassPoints: { increment: 10 },
+          },
+        });
+      } else {
+        await prisma.user.update({
+          where: { id: req.userId! },
+          data: { nassPoints: { increment: 10 } },
+        });
+      }
+    }
+
     const post = await prisma.post.create({
-      data: { authorId: req.userId!, content: content.trim(), imageUrl: imageUrl || null },
+      data: { authorId: req.userId!, content: content.trim(), imageUrl: imageUrl || null, flagged: shouldFlag },
       include: {
         author: { select: userSelect },
         likes: { select: { userId: true } },
@@ -69,6 +118,18 @@ postRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response) 
       isLiked: false,
       likes: undefined,
     });
+
+    // Allow posting first, then auto-delete disallowed content shortly after.
+    if (shouldDeleteSoon) {
+      const postId = post.id;
+      setTimeout(async () => {
+        try {
+          await prisma.post.delete({ where: { id: postId } });
+        } catch {
+          // Ignore if already removed.
+        }
+      }, 2500);
+    }
   } catch (error) {
     console.error('Create post error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -96,6 +157,20 @@ postRouter.post('/:id/like', authenticateToken, async (req: AuthRequest, res: Re
 
 postRouter.post('/:id/comments', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const me = await prisma.user.findUnique({
+      where: { id: req.userId! },
+      select: { mutedUntil: true, muteReason: true, timeoutUntil: true, timeoutReason: true },
+    });
+    const now = new Date();
+    if (me?.timeoutUntil && me.timeoutUntil > now) {
+      res.status(403).json({ code: 'timeout', message: me.timeoutReason || 'You are timed out.' });
+      return;
+    }
+    if (me?.mutedUntil && me.mutedUntil > now) {
+      res.status(403).json({ code: 'muted', message: me.muteReason || 'You are muted.' });
+      return;
+    }
+
     const { content } = req.body;
     if (!content?.trim()) { res.status(400).json({ message: 'Content required' }); return; }
     const comment = await prisma.postComment.create({
@@ -116,7 +191,10 @@ postRouter.post('/:id/comments', authenticateToken, async (req: AuthRequest, res
 postRouter.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const post = await prisma.post.findUnique({ where: { id: req.params.id } });
-    if (!post || post.authorId !== req.userId) {
+    if (!post) { res.status(404).json({ message: 'Not found' }); return; }
+    // Allow owner/admin to delete any post
+    const me = await prisma.user.findUnique({ where: { id: req.userId! }, select: { role: true } });
+    if (post.authorId !== req.userId && me?.role !== 'owner' && me?.role !== 'admin') {
       res.status(403).json({ message: 'Not allowed' });
       return;
     }

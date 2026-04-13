@@ -6,7 +6,13 @@ export const authRouter = Router();
 
 const userFields = (u: any) => ({
   id: u.id, username: u.username, email: u.email, avatar: u.avatar, banner: u.banner, bio: u.bio,
-  status: u.status, customStatus: u.customStatus,
+  status: u.status, customStatus: u.customStatus, role: u.role || 'user',
+  postStreak: u.postStreak || 0, postStreakBest: u.postStreakBest || 0,
+  nassPoints: u.nassPoints || 0,
+  mutedUntil: u.mutedUntil ? (u.mutedUntil instanceof Date ? u.mutedUntil.toISOString() : u.mutedUntil) : null,
+  muteReason: u.muteReason || null,
+  timeoutUntil: u.timeoutUntil ? (u.timeoutUntil instanceof Date ? u.timeoutUntil.toISOString() : u.timeoutUntil) : null,
+  timeoutReason: u.timeoutReason || null,
   lastSeen: u.lastSeen instanceof Date ? u.lastSeen.toISOString() : u.lastSeen,
   createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
 });
@@ -38,6 +44,10 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) { res.status(401).json({ message: 'Invalid email or password' }); return; }
+    if (user.isBanned) {
+      res.status(403).json({ code: 'banned', message: user.banReason || 'Your account has been banned.' });
+      return;
+    }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) { res.status(401).json({ message: 'Invalid email or password' }); return; }

@@ -43,6 +43,7 @@ interface UserPanelProps {
 
 export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: UserPanelProps) {
   const [user, setUser] = useState<any>(null);
+  const [dmStreak, setDmStreak] = useState<number>(0);
   const me = useAuthStore((s) => s.user);
   const { conversations, addConversation, setActiveConversation, onlineUsers, userStatuses } = useChatStore();
   const isOnline = onlineUsers.has(userId);
@@ -51,6 +52,24 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
   useEffect(() => {
     api.users.get(userId).then(setUser).catch(() => {});
   }, [userId]);
+
+  useEffect(() => {
+    if (isMe || !userId) {
+      setDmStreak(0);
+      return;
+    }
+    const dm = conversations.find((c) => c.type === 'dm' && c.members.some((m: any) => m.userId === userId));
+    if (!dm) {
+      setDmStreak(0);
+      return;
+    }
+    api.streaks.get(dm.id)
+      .then((rows) => {
+        const best = rows.reduce((max: number, row: any) => Math.max(max, row.currentStreak || 0), 0);
+        setDmStreak(best);
+      })
+      .catch(() => setDmStreak(0));
+  }, [userId, isMe, conversations]);
 
   const startDm = async () => {
     if (!user || isMe) return;
@@ -99,7 +118,7 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
           onClick={(e) => e.stopPropagation()}
           className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
           <PanelContent user={user} isMe={isMe} isOnline={isOnline} displayPresence={displayPresence}
-            badges={badges} links={links} onClose={onClose} startDm={startDm} />
+            badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} />
         </motion.div>
       </div>
     );
@@ -109,14 +128,14 @@ export function UserPanel({ userId, onClose, onDmSent, position = 'right' }: Use
     <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.2 }}
       className="absolute right-0 top-0 bottom-0 z-20 w-80 border-l border-border bg-card flex flex-col overflow-y-auto">
       <PanelContent user={user} isMe={isMe} isOnline={isOnline} displayPresence={displayPresence}
-        badges={badges} links={links} onClose={onClose} startDm={startDm} />
+        badges={badges} links={links} onClose={onClose} startDm={startDm} dmStreak={dmStreak} />
     </motion.div>
   );
 }
 
-function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, onClose, startDm }: {
+function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, onClose, startDm, dmStreak }: {
   user: any; isMe: boolean; isOnline: boolean; displayPresence: string;
-  badges: string[]; links: string[]; onClose: () => void; startDm: () => void;
+  badges: string[]; links: string[]; onClose: () => void; startDm: () => void; dmStreak: number;
 }) {
   return (
     <>
@@ -147,6 +166,7 @@ function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, on
 
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-lg font-bold text-foreground">{user.username}</h2>
+          <span className="text-xs font-semibold text-amber-400">{user.nassPoints || 0} NassPoints</span>
           {badges.length > 0 && (
             <div className="flex items-center gap-1">
               {badges.map((badge) => {
@@ -166,6 +186,11 @@ function PanelContent({ user, isMe, isOnline, displayPresence, badges, links, on
         <p className="text-xs text-muted-foreground mt-0.5">
           {PRESENCE_LABELS[displayPresence] || 'Offline'}
         </p>
+        {!isMe && dmStreak > 0 && (
+          <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-orange-400">
+            <Flame className="h-4 w-4" /> {dmStreak}
+          </p>
+        )}
 
         {user.customStatus && (
           <p className="mt-1 text-sm text-foreground/80">{user.customStatus}</p>

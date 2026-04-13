@@ -6,11 +6,12 @@ import { MessageInput } from './MessageInput';
 import { NewConversationDialog } from './NewConversationDialog';
 import { GroupPanel } from './GroupPanel';
 import { getInitials, getAvatarColor, fileUrl, formatLastSeen } from '@/lib/utils';
-import { ArrowLeft, Phone, Video, Users, UserPlus, Search, X } from 'lucide-react';
+import { ArrowLeft, Phone, Video, Users, UserPlus, Search, X, Flame, ImagePlus, Eraser } from 'lucide-react';
 import { getSocket } from '@/hooks/useSocket';
 import { useCallStore } from '@/stores/callStore';
 import { ensureMediaPermissions } from '@/hooks/useWebRTC';
 import { AnimatePresence } from 'framer-motion';
+import { api } from '@/lib/api';
 
 interface ChatViewProps {
   onBack: () => void;
@@ -29,14 +30,27 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
 
   const [wallpaper, setWallpaper] = useState(() => localStorage.getItem('chat-wallpaper') || 'none');
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('compact-mode') === 'true');
+  const [streaks, setStreaks] = useState<Record<string, number>>({});
+  const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const onWallpaper = () => setWallpaper(localStorage.getItem('chat-wallpaper') || 'none');
+    const getConversationWallpaper = () => {
+      if (!activeConversationId) return localStorage.getItem('chat-wallpaper') || 'none';
+      try {
+        const map = JSON.parse(localStorage.getItem('chat-wallpapers') || '{}') as Record<string, string>;
+        return map[activeConversationId] || localStorage.getItem('chat-wallpaper') || 'none';
+      } catch {
+        return localStorage.getItem('chat-wallpaper') || 'none';
+      }
+    };
+    const onWallpaper = () => setWallpaper(getConversationWallpaper());
     const onCompact = () => setCompactMode(localStorage.getItem('compact-mode') === 'true');
+    setWallpaper(getConversationWallpaper());
     window.addEventListener('wallpaper-changed', onWallpaper);
     window.addEventListener('compact-mode-changed', onCompact);
     return () => { window.removeEventListener('wallpaper-changed', onWallpaper); window.removeEventListener('compact-mode-changed', onCompact); };
-  }, []);
+  }, [activeConversationId]);
 
   const conv = conversations.find((c) => c.id === activeConversationId);
   const convMessages = activeConversationId ? messages[activeConversationId] || [] : [];
@@ -59,6 +73,32 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     }
     setShowGroupPanel(false);
   }, [activeConversationId, loadMessages, clearUnread]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket || !activeConversationId || conv?.type !== 'dm') {
+      setStreaks({});
+      return;
+    }
+
+    api.streaks.get(activeConversationId)
+      .then((rows) => {
+        const map: Record<string, number> = {};
+        for (const row of rows) map[row.userId] = row.currentStreak || 0;
+        setStreaks(map);
+      })
+      .catch(() => setStreaks({}));
+
+    const onStreak = (payload: { conversationId: string; userId: string; currentStreak: number }) => {
+      if (payload.conversationId !== activeConversationId) return;
+      setStreaks((prev) => ({ ...prev, [payload.userId]: payload.currentStreak }));
+    };
+
+    socket.on('streak:updated', onStreak);
+    return () => {
+      socket.off('streak:updated', onStreak);
+    };
+  }, [activeConversationId, conv?.type]);
 
   const filteredMessages = searchQuery
     ? convMessages.filter((m) => m.content?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -89,6 +129,41 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     });
   };
 
+  const saveConversationWallpaper = (value: string) => {
+    if (!activeConversationId) return;
+    const current = (() => {
+      try { return JSON.parse(localStorage.getItem('chat-wallpapers') || '{}') as Record<string, string>; } catch { return {}; }
+    })();
+    current[activeConversationId] = value;
+    localStorage.setItem('chat-wallpapers', JSON.stringify(current));
+    setWallpaper(value);
+  };
+
+  const clearConversationWallpaper = () => {
+    if (!activeConversationId) return;
+    const current = (() => {
+      try { return JSON.parse(localStorage.getItem('chat-wallpapers') || '{}') as Record<string, string>; } catch { return {}; }
+    })();
+    delete current[activeConversationId];
+    localStorage.setItem('chat-wallpapers', JSON.stringify(current));
+    setWallpaper(localStorage.getItem('chat-wallpaper') || 'none');
+  };
+
+  const handleWallpaperUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversationId) return;
+    setUploadingWallpaper(true);
+    try {
+      const { url } = await api.uploads.upload(file);
+      saveConversationWallpaper(`custom:${url}`);
+    } catch (error) {
+      console.error('Wallpaper upload error:', error);
+    } finally {
+      setUploadingWallpaper(false);
+      e.target.value = '';
+    }
+  };
+
   const wallpaperStyles: Record<string, React.CSSProperties> = {
     dots: { backgroundImage: 'radial-gradient(circle, var(--color-border) 1px, transparent 1px)', backgroundSize: '20px 20px' },
     grid: { backgroundImage: 'linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)', backgroundSize: '24px 24px' },
@@ -96,6 +171,10 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     cross: { backgroundImage: 'radial-gradient(circle, transparent 8px, var(--color-border) 8px, var(--color-border) 9px, transparent 9px)', backgroundSize: '30px 30px' },
     waves: { backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 14px, var(--color-border) 14px, var(--color-border) 15px)' },
   };
+  const wallpaperStyle = wallpaper.startsWith('custom:')
+    ? { backgroundImage: `url(${fileUrl(wallpaper.replace('custom:', ''))})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : (wallpaperStyles[wallpaper] || {});
+  const bestStreak = Object.values(streaks).reduce((max, value) => Math.max(max, value), 0);
 
   if (!conv) return null;
 
@@ -119,8 +198,20 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
           <p className="text-[11px] text-muted-foreground">
             {isGroup ? `${memberCount} members, ${onlineMemberCount} online` : isOnline ? 'Online' : otherUser?.lastSeen ? formatLastSeen(otherUser.lastSeen) : 'Offline'}
           </p>
+          {!isGroup && bestStreak > 0 && (
+            <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-orange-400">
+              <Flame className="h-3 w-3" /> {bestStreak}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          <input ref={wallpaperInputRef} type="file" accept="image/*" className="hidden" onChange={handleWallpaperUpload} />
+          <button onClick={() => wallpaperInputRef.current?.click()} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Set chat wallpaper">
+            {uploadingWallpaper ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" /> : <ImagePlus className="h-[18px] w-[18px]" />}
+          </button>
+          <button onClick={clearConversationWallpaper} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Clear chat wallpaper">
+            <Eraser className="h-[18px] w-[18px]" />
+          </button>
           <button onClick={() => handleCall('voice')} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground" title="Voice Call">
             <Phone className="h-[18px] w-[18px]" />
           </button>
@@ -157,7 +248,7 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()} style={wallpaperStyles[wallpaper] || {}}>
+          <div className="flex-1 overflow-y-auto py-4" onContextMenu={(e) => e.stopPropagation()} style={wallpaperStyle}>
             <div className={`mx-auto max-w-3xl ${compactMode ? 'space-y-0' : 'space-y-0.5'}`}>
               {filteredMessages.map((msg, i) => {
                 const prevMsg = filteredMessages[i - 1];

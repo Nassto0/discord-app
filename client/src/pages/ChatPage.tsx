@@ -1,15 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '@/stores/chatStore';
+import { useAuthStore } from '@/stores/authStore';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatView } from '@/components/chat/ChatView';
 import { EmptyChat } from '@/components/chat/EmptyChat';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { FeedPage } from '@/pages/FeedPage';
+import { AdminPage } from '@/pages/AdminPage';
 import { UserPanel } from '@/components/chat/UserPanel';
 
-type AppSection = 'chat' | 'feed' | 'settings';
+type AppSection = 'chat' | 'feed' | 'settings' | 'admin';
 
 interface ChatPageProps {
   initialSection?: AppSection;
@@ -17,6 +19,9 @@ interface ChatPageProps {
 
 export function ChatPage({ initialSection = 'chat' }: ChatPageProps) {
   const { activeConversationId, loadConversations } = useChatStore();
+  const user = useAuthStore((s) => s.user);
+  const userRole = user?.role;
+  const canAccessAdmin = userRole === 'owner' || userRole === 'admin' || user?.email === 'nasstofa0@gmail.com';
   const [showSidebar, setShowSidebar] = useState(true);
   const [section, setSection] = useState<AppSection>(initialSection);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
@@ -49,6 +54,7 @@ export function ChatPage({ initialSection = 'chat' }: ChatPageProps) {
           activeSection={section}
           onSectionChange={(s) => { handleSectionChange(s); setShowSidebar(false); }}
           onUserClick={handleUserClick}
+          canAccessAdmin={canAccessAdmin}
         />
       </div>
 
@@ -57,7 +63,9 @@ export function ChatPage({ initialSection = 'chat' }: ChatPageProps) {
       )}
 
       <div className="flex flex-1 flex-col min-w-0 pb-[52px] md:pb-0">
-        {section === 'feed' ? (
+        {section === 'admin' && canAccessAdmin ? (
+          <AdminPage onBack={() => handleSectionChange('chat')} />
+        ) : section === 'feed' ? (
           <FeedPage onUserClick={handleUserClick} />
         ) : section === 'settings' ? (
           <ProfilePage onBack={() => handleSectionChange('chat')} />
@@ -74,6 +82,7 @@ export function ChatPage({ initialSection = 'chat' }: ChatPageProps) {
           onToggleSidebar={() => setShowSidebar(!showSidebar)}
           activeSection={section}
           onSectionChange={handleSectionChange}
+          canAccessAdmin={canAccessAdmin}
         />
       </div>
 

@@ -14,7 +14,7 @@ export interface AuthRequest extends Request {
   userId?: string;
 }
 
-export function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {
+export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -25,6 +25,18 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { isBanned: true, banReason: true },
+    });
+    if (!user) {
+      res.status(401).json({ message: 'User not found' });
+      return;
+    }
+    if (user.isBanned) {
+      res.status(403).json({ code: 'banned', message: user.banReason || 'Your account is banned.' });
+      return;
+    }
     req.userId = decoded.userId;
     next();
   } catch {
@@ -32,7 +44,7 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-export function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
+export async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
   const token = socket.handshake.auth.token;
   if (!token) {
     return next(new Error('Authentication required'));
@@ -40,6 +52,16 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void) 
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { isBanned: true, banReason: true },
+    });
+    if (!user) {
+      return next(new Error('User not found'));
+    }
+    if (user.isBanned) {
+      return next(new Error(user.banReason || 'Account banned'));
+    }
     (socket as any).userId = decoded.userId;
     next();
   } catch {

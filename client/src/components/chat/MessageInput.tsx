@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useChatStore } from '@/stores/chatStore';
+import { useAuthStore } from '@/stores/authStore';
 import { getSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import { useMediaRecorder } from '@/hooks/useMediaRecorder';
@@ -24,6 +25,8 @@ export function MessageInput({ conversationId }: MessageInputProps) {
   const [showEmojis, setShowEmojis] = useState(false);
   const [emojiCat, setEmojiCat] = useState(0);
   const { replyingTo, setReplyingTo } = useChatStore();
+  const user = useAuthStore((s) => s.user);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const { isRecording, duration, startRecording, stopRecording, cancelRecording } = useMediaRecorder();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -50,7 +53,14 @@ export function MessageInput({ conversationId }: MessageInputProps) {
   const sendMessage = useCallback(async (content: string | null, type: string, fileUrl: string | null, fileDuration?: number | null) => {
     const socket = getSocket();
     if (!socket) return;
-    socket.emit('message:send', { conversationId, content, type, fileUrl, replyToId: replyingTo?.id || null, fileDuration: fileDuration || null }, () => {});
+    socket.emit('message:send', { conversationId, content, type, fileUrl, replyToId: replyingTo?.id || null, fileDuration: fileDuration || null }, (resp: any) => {
+      if (resp?.error && resp?.reason) {
+        alert(resp.reason);
+        return;
+      }
+      const gain = type === 'image' || type === 'video' || type === 'voice' ? 3 : 1;
+      updateUser({ nassPoints: (user?.nassPoints || 0) + gain } as any);
+    });
     sounds.messageSent();
     setReplyingTo(null);
     socket.emit('typing:stop', { conversationId });

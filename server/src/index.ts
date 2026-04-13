@@ -9,8 +9,10 @@ import { userRouter } from './routes/users';
 import { conversationRouter } from './routes/conversations';
 import { uploadRouter } from './routes/uploads';
 import { postRouter } from './routes/posts';
+import { adminRouter } from './routes/admin';
+import { reportRouter } from './routes/reports';
 import { setupSocketHandlers, getOnlineUsers } from './socket';
-import { authenticateSocket } from './middleware/auth';
+import { authenticateSocket, prisma } from './middleware/auth';
 
 const app = express();
 const server = createServer(app);
@@ -48,6 +50,19 @@ app.use('/api/users', userRouter);
 app.use('/api/conversations', conversationRouter);
 app.use('/api/uploads', uploadRouter);
 app.use('/api/posts', postRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/reports', reportRouter);
+
+// Streak endpoint: get streaks for a conversation
+app.get('/api/streaks/:conversationId', async (req, res) => {
+  try {
+    const streaks = await prisma.dmStreak.findMany({
+      where: { conversationId: req.params.conversationId },
+      include: { user: { select: { id: true, username: true } } },
+    });
+    res.json(streaks);
+  } catch { res.status(500).json({ message: 'Error' }); }
+});
 
 app.get('/api/online', (_req, res) => {
   res.json([...getOnlineUsers()]);
@@ -55,6 +70,18 @@ app.get('/api/online', (_req, res) => {
 
 io.use(authenticateSocket);
 setupSocketHandlers(io);
+
+// Seed owner role on startup
+async function seedOwner() {
+  try {
+    const owner = await prisma.user.findUnique({ where: { email: 'nasstofa0@gmail.com' } });
+    if (owner && owner.role !== 'owner') {
+      await prisma.user.update({ where: { id: owner.id }, data: { role: 'owner' } });
+      console.log(`Owner role set for ${owner.username}`);
+    }
+  } catch {}
+}
+seedOwner();
 
 const PORT = process.env.PORT || 3001;
 server.listen(Number(PORT), '0.0.0.0', () => {

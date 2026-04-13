@@ -45,7 +45,8 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 export function fileUrl(url: string | null | undefined): string {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) return url;
-  return `${API_URL}${url}`;
+  const normalized = url.startsWith('/') ? url : `/uploads/${url}`;
+  return `${API_URL}${normalized}`;
 }
 
 export function formatLastSeen(dateStr: string): string {

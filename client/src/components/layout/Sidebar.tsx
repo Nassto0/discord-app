@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatTime, getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download } from 'lucide-react';
+import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download, Shield } from 'lucide-react';
 import { NewConversationDialog } from '@/components/chat/NewConversationDialog';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -13,14 +13,21 @@ interface SidebarProps {
   activeSection: string;
   onSectionChange: (s: any) => void;
   onUserClick?: (userId: string) => void;
+  canAccessAdmin?: boolean;
 }
 
-export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, activeSection, onSectionChange, onUserClick }: SidebarProps) {
+export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, activeSection, onSectionChange, onUserClick, canAccessAdmin = false }: SidebarProps) {
   const { conversations, activeConversationId, setActiveConversation, removeConversation, onlineUsers, userStatuses, clearUnread } = useChatStore();
   const { user, logout } = useAuthStore();
   const [search, setSearch] = useState('');
   const [showNewConv, setShowNewConv] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [pinnedConversations, setPinnedConversations] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('pinned-conversations') || '[]'); } catch { return []; }
+  });
+  const [mutedConversations, setMutedConversations] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('muted-conversations') || '[]'); } catch { return []; }
+  });
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -31,8 +38,29 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
 
   const filtered = conversations.filter((c) => {
     const name = c.type === 'dm' ? c.members.find((m) => m.userId !== user?.id)?.user.username || '' : c.name || '';
-    return name.toLowerCase().includes(search.toLowerCase());
+    return name.toLowerCase().includes(search.toLowerCase()) && !mutedConversations.includes(c.id);
+  }).sort((a, b) => {
+    const aPinned = pinnedConversations.includes(a.id) ? 1 : 0;
+    const bPinned = pinnedConversations.includes(b.id) ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+    return 0;
   });
+
+  const togglePinned = (id: string) => {
+    const next = pinnedConversations.includes(id)
+      ? pinnedConversations.filter((x) => x !== id)
+      : [...pinnedConversations, id];
+    setPinnedConversations(next);
+    localStorage.setItem('pinned-conversations', JSON.stringify(next));
+  };
+
+  const toggleMuted = (id: string) => {
+    const next = mutedConversations.includes(id)
+      ? mutedConversations.filter((x) => x !== id)
+      : [...mutedConversations, id];
+    setMutedConversations(next);
+    localStorage.setItem('muted-conversations', JSON.stringify(next));
+  };
 
   const handleConvContext = (e: React.MouseEvent, convId: string) => {
     e.preventDefault();
@@ -68,6 +96,13 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
             ${activeSection === 'chat' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
           <MessageSquare className="h-3.5 w-3.5" /> Chats
         </button>
+        {canAccessAdmin && (
+          <button onClick={() => onSectionChange('admin')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors
+              ${activeSection === 'admin' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <Shield className="h-3.5 w-3.5" /> Admin
+          </button>
+        )}
       </div>
 
       {activeSection === 'chat' && (
@@ -116,6 +151,7 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
                         <span className="truncate text-sm font-medium">{displayName}</span>
+                        {pinnedConversations.includes(conv.id) && <span className="text-[10px] text-amber-400">PIN</span>}
                         {conv.unreadCount > 0 && (
                           <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white ml-2 shrink-0">
                             {conv.unreadCount}
@@ -180,6 +216,7 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
                 return p === 'dnd' ? 'Do Not Disturb' : p === 'invisible' ? 'Invisible' : p.charAt(0).toUpperCase() + p.slice(1);
               })()}
             </p>
+            <p className="text-[10px] text-amber-400">{(user as any)?.nassPoints || 0} NassPoints</p>
           </button>
           <button onClick={onShowProfile}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Settings">
@@ -206,6 +243,14 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
             <button onClick={() => { clearUnread(contextMenu.id); setContextMenu(null); }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary rounded-md mx-1" style={{ width: 'calc(100% - 8px)' }}>
               <CheckCheck className="h-4 w-4 text-muted-foreground" /> Mark as Read
+            </button>
+            <button onClick={() => { togglePinned(contextMenu.id); setContextMenu(null); }}
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary rounded-md mx-1" style={{ width: 'calc(100% - 8px)' }}>
+              <Shield className="h-4 w-4 text-muted-foreground" /> {pinnedConversations.includes(contextMenu.id) ? 'Unpin Chat' : 'Pin Chat'}
+            </button>
+            <button onClick={() => { toggleMuted(contextMenu.id); setContextMenu(null); }}
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-foreground/90 hover:bg-primary/10 hover:text-primary rounded-md mx-1" style={{ width: 'calc(100% - 8px)' }}>
+              <Search className="h-4 w-4 text-muted-foreground" /> {mutedConversations.includes(contextMenu.id) ? 'Unmute Chat' : 'Mute Chat'}
             </button>
             <div className="h-px bg-border my-1 mx-2" />
             <button onClick={() => { removeConversation(contextMenu.id); setContextMenu(null); }}
