@@ -10,3 +10,4 @@ server/uploads/*
 !.env.example
 dist-electron/
 electron/node_modules/
+Gemini_Generated_Image*

@@ -23,6 +23,8 @@ const ICE_CONFIG = buildIceConfig();
 
 let pc: RTCPeerConnection | null = null;
 let audioEl: HTMLAudioElement | null = null;
+let inputGainNode: GainNode | null = null;
+let inputAudioCtx: AudioContext | null = null;
 let pendingCandidates: RTCIceCandidateInit[] = [];
 let activeCallId: string | null = null;
 let activeTargetUserId: string | null = null;
@@ -35,10 +37,44 @@ useCallStore.subscribe((state) => {
 });
 
 // Forward output-volume and voice-processing changes from AudioSettings to live calls
+async function switchInputDevice(deviceId: string) {
+  if (!pc) return;
+  const store = useCallStore.getState();
+  const currentStream = store.localStream;
+  if (!currentStream) return;
+
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: deviceId !== 'default' ? { exact: deviceId } : undefined },
+    });
+    const newTrack = newStream.getAudioTracks()[0];
+    const sender = pc.getSenders().find((s) => s.track?.kind === 'audio');
+    if (sender) {
+      // Stop old track, replace with new
+      sender.track?.stop();
+      await sender.replaceTrack(newTrack);
+      // Update local stream reference
+      const updated = new MediaStream([newTrack, ...currentStream.getVideoTracks()]);
+      store.setLocalStream(updated);
+    }
+  } catch (err) {
+    console.error('[WebRTC] input device switch failed:', err);
+  }
+}
+
 function onAudioSettingsChanged(e: Event) {
   const { type, key, value } = (e as CustomEvent).detail;
   if (type === 'output-volume') {
     if (audioEl) audioEl.volume = Math.max(0, Math.min(1, value / 100));
+  } else if (type === 'input-volume') {
+    if (inputGainNode) inputGainNode.gain.value = Math.max(0, Math.min(2, value / 50));
+  } else if (type === 'output-device') {
+    // Switch output device on audio element (Chrome/Edge only)
+    if (audioEl && typeof (audioEl as any).setSinkId === 'function') {
+      (audioEl as any).setSinkId(value).catch(() => {});
+    }
+  } else if (type === 'input-device') {
+    switchInputDevice(value);
   } else if (type === 'toggle') {
     const constraints: MediaTrackConstraints = {};
     if (key === 'echo-cancel') constraints.echoCancellation = value;

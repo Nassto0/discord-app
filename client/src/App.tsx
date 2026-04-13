@@ -9,6 +9,7 @@ import { CallView } from '@/components/calls/CallView';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { useCallStore } from '@/stores/callStore';
 import { AnimatePresence } from 'framer-motion';
+import { Analytics } from '@vercel/analytics/react';
 
 export function App() {
   const { user, isLoading, checkAuth } = useAuthStore();
@@ -49,6 +50,7 @@ export function App() {
       </div>
       <IncomingCallOverlay />
       <AnimatePresence>{isVideoCall && <CallView />}</AnimatePresence>
+      <Analytics />
     </div>
   );
 }

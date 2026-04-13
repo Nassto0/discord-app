@@ -6,6 +6,7 @@ import { getInitials, getAvatarColor, formatTime, fileUrl } from '@/lib/utils';
 import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSocket } from '@/hooks/useSocket';
+import { showNotification, sounds } from '@/lib/sounds';
 
 interface FeedPageProps {
   onUserClick: (userId: string) => void;
@@ -34,12 +35,60 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-    const handler = (post: any) => {
-      setPosts((prev) => prev.find((p) => p.id === post.id) ? prev : [post, ...prev]);
+
+    const onNewPost = (post: any) => {
+      setPosts((prev) => prev.find((p) => p.id === post.id) ? prev : [{ ...post, comments: post.comments || [] }, ...prev]);
+      if (post.authorId !== user?.id) {
+        sounds.notification();
+        showNotification(post.author?.username || 'Someone', 'Published a new post');
+      }
     };
-    socket.on('post:new', handler);
-    return () => { socket.off('post:new', handler); };
-  }, []);
+
+    const onPostLiked = (data: any) => {
+      setPosts((prev) => prev.map((p) => {
+        if (p.id !== data.postId) return p;
+        const alreadyLiked = data.liked;
+        return { ...p, likeCount: alreadyLiked ? p.likeCount + 1 : Math.max(0, p.likeCount - 1) };
+      }));
+      if (data.userId !== user?.id && data.liked) {
+        const post = posts.find((p: any) => p.id === data.postId);
+        if (post && post.authorId === user?.id) {
+          sounds.notification();
+          showNotification('Post Liked', `${data.username || 'Someone'} liked your post`);
+        }
+      }
+    };
+
+    const onPostCommented = (data: any) => {
+      setPosts((prev) => prev.map((p) => {
+        if (p.id !== data.postId) return p;
+        const exists = (p.comments || []).find((c: any) => c.id === data.comment.id);
+        return exists ? p : { ...p, comments: [...(p.comments || []), data.comment] };
+      }));
+      if (data.comment.authorId !== user?.id) {
+        const post = posts.find((p: any) => p.id === data.postId);
+        if (post && post.authorId === user?.id) {
+          sounds.notification();
+          showNotification('New Comment', `${data.comment.author?.username || 'Someone'} commented on your post`);
+        }
+      }
+    };
+
+    const onPostDeleted = (data: any) => {
+      setPosts((prev) => prev.filter((p) => p.id !== data.postId));
+    };
+
+    socket.on('post:new', onNewPost);
+    socket.on('post:liked', onPostLiked);
+    socket.on('post:commented', onPostCommented);
+    socket.on('post:deleted', onPostDeleted);
+    return () => {
+      socket.off('post:new', onNewPost);
+      socket.off('post:liked', onPostLiked);
+      socket.off('post:commented', onPostCommented);
+      socket.off('post:deleted', onPostDeleted);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -69,11 +118,16 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
     try {
       const { liked } = await api.posts.like(postId);
       setPosts(posts.map((p) => p.id === postId ? { ...p, isLiked: liked, likeCount: liked ? p.likeCount + 1 : p.likeCount - 1 } : p));
+      getSocket()?.emit('post:liked', { postId, liked, username: user?.username });
     } catch {}
   };
 
   const handleDelete = async (postId: string) => {
-    try { await api.posts.delete(postId); setPosts(posts.filter((p) => p.id !== postId)); } catch {}
+    try {
+      await api.posts.delete(postId);
+      setPosts(posts.filter((p) => p.id !== postId));
+      getSocket()?.emit('post:deleted', { postId });
+    } catch {}
   };
 
   const handleShare = async (post: any) => {
@@ -101,6 +155,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
       setPosts(posts.map((p) =>
         p.id === postId ? { ...p, comments: [...(p.comments || []), comment] } : p
       ));
+      getSocket()?.emit('post:commented', { postId, comment });
       setCommentText({ ...commentText, [postId]: '' });
     } catch (err) {
       console.error('Comment error:', err);

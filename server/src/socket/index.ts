@@ -142,6 +142,18 @@ export function setupSocketHandlers(io: Server) {
       socket.broadcast.emit('post:new', post);
     });
 
+    socket.on('post:liked', (data) => {
+      socket.broadcast.emit('post:liked', { ...data, userId });
+    });
+
+    socket.on('post:commented', (data) => {
+      socket.broadcast.emit('post:commented', data);
+    });
+
+    socket.on('post:deleted', (data) => {
+      socket.broadcast.emit('post:deleted', data);
+    });
+
     socket.on('message:delete', async (data) => {
       try {
         const { messageId, conversationId } = data;

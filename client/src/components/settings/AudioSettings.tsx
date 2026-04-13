@@ -101,7 +101,11 @@ export function AudioSettings() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Input Device</label>
-          <select value={selectedInput} onChange={(e) => setSelectedInput(e.target.value)}
+          <select value={selectedInput} onChange={(e) => {
+            setSelectedInput(e.target.value);
+            // Apply to live call immediately
+            window.dispatchEvent(new CustomEvent('audio-settings-changed', { detail: { type: 'input-device', value: e.target.value } }));
+          }}
             className="h-11 w-full rounded-xl border border-border bg-card/50 px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/50 cursor-pointer">
             <option value="default">Default Device</option>
             {inputDevices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
@@ -109,7 +113,10 @@ export function AudioSettings() {
         </div>
         <div className="space-y-2">
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Output Device</label>
-          <select value={selectedOutput} onChange={(e) => setSelectedOutput(e.target.value)}
+          <select value={selectedOutput} onChange={(e) => {
+            setSelectedOutput(e.target.value);
+            window.dispatchEvent(new CustomEvent('audio-settings-changed', { detail: { type: 'output-device', value: e.target.value } }));
+          }}
             className="h-11 w-full rounded-xl border border-border bg-card/50 px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/50 cursor-pointer">
             <option value="default">Default Device</option>
             {outputDevices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label}</option>)}
@@ -123,7 +130,11 @@ export function AudioSettings() {
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Input Volume</label>
             <span className="text-xs font-medium text-foreground bg-secondary px-2 py-0.5 rounded-md">{inputVolume}%</span>
           </div>
-          <input type="range" min={0} max={100} value={inputVolume} onChange={(e) => setInputVolume(Number(e.target.value))}
+          <input type="range" min={0} max={100} value={inputVolume} onChange={(e) => {
+            const val = Number(e.target.value);
+            setInputVolume(val);
+            window.dispatchEvent(new CustomEvent('audio-settings-changed', { detail: { type: 'input-volume', value: val } }));
+          }}
             className="w-full accent-primary h-2 rounded-full appearance-none bg-secondary cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 transition-all" />
         </div>
         <div>

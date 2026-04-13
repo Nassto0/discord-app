@@ -1,18 +1,29 @@
 {
+  "id": "/",
   "name": "Nasscord",
   "short_name": "Nasscord",
-  "description": "A modern chat app with DMs, group chats, voice & video calls",
+  "description": "Chat app with DMs, group chats, voice & video calls",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#09090b",
   "theme_color": "#09090b",
   "orientation": "any",
+  "categories": ["social", "communication"],
   "icons": [
     {
       "src": "/icon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
 }

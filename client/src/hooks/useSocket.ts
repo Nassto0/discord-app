@@ -156,8 +156,6 @@ export function useSocket() {
       }
     });
 
-    socket.on('post:new', () => {});
-
     return () => {
       socket.disconnect();
       globalSocket = null;
