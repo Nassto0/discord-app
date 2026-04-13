@@ -9,6 +9,7 @@ import { getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
 import { ArrowLeft, Phone, Video, Users, UserPlus } from 'lucide-react';
 import { getSocket } from '@/hooks/useSocket';
 import { useCallStore } from '@/stores/callStore';
+import { ensureMediaPermissions } from '@/hooks/useWebRTC';
 import { AnimatePresence } from 'framer-motion';
 
 interface ChatViewProps {
@@ -50,10 +51,14 @@ export function ChatView({ onBack, onUserClick }: ChatViewProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [convMessages.length]);
 
-  const handleCall = (type: 'voice' | 'video') => {
+  const handleCall = async (type: 'voice' | 'video') => {
     const socket = getSocket();
     if (!socket || !activeConversationId) return;
     if (callStatus !== 'idle') return;
+
+    // Pre-request permissions so mobile browsers show the prompt before the call flow
+    const granted = await ensureMediaPermissions(type);
+    if (!granted) return;
 
     const remoteUser = isGroup
       ? { id: 'group', username: displayName, avatar: conv?.avatar || null }

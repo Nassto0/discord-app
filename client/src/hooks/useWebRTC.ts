@@ -92,6 +92,27 @@ function cleanupWebRTC() {
   }
 }
 
+/** Pre-request mic/camera permissions before starting a call.
+ *  Returns true if granted, false if denied. On mobile browsers the permission
+ *  prompt must happen BEFORE the WebRTC flow or it gets auto-dismissed. */
+export async function ensureMediaPermissions(callType: 'voice' | 'video'): Promise<boolean> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: callType === 'video',
+    });
+    // Immediately stop all tracks — we just needed the permission grant
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch (err: any) {
+    console.warn('[WebRTC] permission pre-check failed:', err);
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      alert('Microphone access is required for calls. Please allow microphone access in your browser settings and try again.');
+    }
+    return false;
+  }
+}
+
 export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
   const socket = getSocket();
   const store = useCallStore.getState();
@@ -292,8 +313,12 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
       },
       video: store.callType === 'video',
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[WebRTC] getUserMedia failed:', err);
+    // If permission was denied or dismissed, don't silently hang up — let the user know
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      alert('Microphone access is required for calls. Please allow microphone access in your browser settings and try again.');
+    }
     hangup();
     return;
   }

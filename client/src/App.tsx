@@ -6,6 +6,7 @@ import { AuthPage } from '@/pages/AuthPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { IncomingCallOverlay } from '@/components/calls/IncomingCallOverlay';
 import { CallView } from '@/components/calls/CallView';
+import { TitleBar } from '@/components/layout/TitleBar';
 import { useCallStore } from '@/stores/callStore';
 import { AnimatePresence } from 'framer-motion';
 
@@ -36,6 +37,7 @@ export function App() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
+      <TitleBar />
       <SocketProvider />
       <AnimatePresence>{showCallBar && !isVideoCall && <CallView />}</AnimatePresence>
       <div className="flex-1 overflow-hidden">

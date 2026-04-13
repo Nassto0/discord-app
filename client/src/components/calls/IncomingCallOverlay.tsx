@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useCallStore } from '@/stores/callStore';
-import { acceptIncoming, rejectIncoming } from '@/hooks/useWebRTC';
+import { acceptIncoming, rejectIncoming, ensureMediaPermissions } from '@/hooks/useWebRTC';
 import { getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
 import { Phone, PhoneOff, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,8 +24,14 @@ export function IncomingCallOverlay() {
 
   const name = remoteUser.username;
 
-  const handleAccept = () => {
+  const handleAccept = async () => {
     if (ringRef.current) clearInterval(ringRef.current);
+    // Pre-request permissions so mobile browsers show the prompt immediately
+    const granted = await ensureMediaPermissions(callType || 'voice');
+    if (!granted) {
+      rejectIncoming();
+      return;
+    }
     acceptIncoming();
   };
 

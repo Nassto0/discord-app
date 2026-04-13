@@ -314,6 +314,16 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
 
             </motion.div>
           </AnimatePresence>
+
+          <div className="mt-12 pb-6 text-center">
+            <p className="text-xs text-muted-foreground/50">
+              Made by{' '}
+              <a href="https://nassto.social" target="_blank" rel="noopener noreferrer"
+                className="font-semibold text-muted-foreground/70 hover:text-primary transition-colors">
+                Nassto
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </motion.div>

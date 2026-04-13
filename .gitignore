@@ -8,3 +8,5 @@ server/uploads/*
 .env.local
 .env.production
 !.env.example
+dist-electron/
+electron/node_modules/

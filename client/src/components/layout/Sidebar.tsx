@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatTime, getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck } from 'lucide-react';
+import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download } from 'lucide-react';
 import { NewConversationDialog } from '@/components/chat/NewConversationDialog';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -182,6 +182,10 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Settings">
             <Settings className="h-3.5 w-3.5" />
           </button>
+          <a href="https://github.com/Nassto0/discord-app/releases/latest" target="_blank" rel="noopener noreferrer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Download Desktop App">
+            <Download className="h-3.5 w-3.5" />
+          </a>
           <button onClick={logout}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Logout">
             <LogOut className="h-3.5 w-3.5" />

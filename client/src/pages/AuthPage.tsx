@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Download } from 'lucide-react';
 
 export function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -80,6 +80,12 @@ export function AuthPage() {
               <span className="font-medium text-primary">{isLogin ? 'Sign up' : 'Sign in'}</span>
             </button>
           </div>
+        </div>
+        <div className="mt-4 text-center">
+          <a href="https://github.com/Nassto0/discord-app/releases/latest" target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <Download className="h-4 w-4" /> Download Desktop App
+          </a>
         </div>
       </motion.div>
     </div>
