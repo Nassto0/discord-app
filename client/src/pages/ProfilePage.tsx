@@ -32,6 +32,7 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
   const [uploading, setUploading] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [followStats, setFollowStats] = useState({ followersCount: 0, followingCount: 0 });
   const [currentTheme, setCurrentTheme] = useState(() => loadSavedTheme());
   const avatarRef = useRef<HTMLInputElement>(null);
   const bannerRef = useRef<HTMLInputElement>(null);
@@ -46,6 +47,16 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
       try { setLinks(JSON.parse((user as any)?.links || '[]')); } catch { setLinks([]); }
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api.users.get(user.id).then((u) => {
+      setFollowStats({
+        followersCount: u.followersCount || 0,
+        followingCount: u.followingCount || 0,
+      });
+    }).catch(() => {});
+  }, [user?.id]);
 
   const uploadFile = async (file: File, field: 'avatar' | 'banner') => {
     setUploading(field);
@@ -197,6 +208,9 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
                           ? <p className="text-sm text-foreground/70 mt-1">{(user as any).customStatus}</p>
                           : <p className="text-sm text-muted-foreground italic mt-1">No custom status set</p>
                         }
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {followStats.followersCount} followers . {followStats.followingCount} following
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -418,6 +432,7 @@ function ChatWallpaper() {
   const apply = (id: string) => {
     setSelected(id);
     localStorage.setItem('chat-wallpaper', id);
+    localStorage.setItem('chat-wallpapers', JSON.stringify({}));
     window.dispatchEvent(new Event('wallpaper-changed'));
   };
 

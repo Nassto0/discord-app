@@ -87,6 +87,7 @@ export const api = {
       request<any>('/stories', { method: 'POST', body: JSON.stringify(data) }),
     view: (id: string) => request<any>(`/stories/${id}/view`, { method: 'POST' }),
     delete: (id: string) => request<any>(`/stories/${id}`, { method: 'DELETE' }),
+    deleteMineAll: () => request<any>('/stories/mine/all', { method: 'DELETE' }),
   },
   admin: {
     stats: () => request<any>('/admin/stats'),

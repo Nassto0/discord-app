@@ -10,6 +10,16 @@ const userSelect = {
   status: true,
 };
 
+storyRouter.delete('/mine/all', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    await prisma.story.deleteMany({ where: { userId: req.userId! } });
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error('Delete all my stories error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 storyRouter.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const now = new Date();
@@ -32,6 +42,7 @@ storyRouter.get('/', authenticateToken, async (req: AuthRequest, res: Response) 
       grouped.get(story.userId).stories.push({
         id: story.id,
         mediaUrl: story.mediaUrl,
+        mediaType: story.mediaType || 'image',
         caption: story.caption,
         createdAt: story.createdAt.toISOString(),
         expiresAt: story.expiresAt.toISOString(),
@@ -47,7 +58,7 @@ storyRouter.get('/', authenticateToken, async (req: AuthRequest, res: Response) 
 
 storyRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { mediaUrl, caption } = req.body;
+    const { mediaUrl, caption, mediaType } = req.body;
     if (!mediaUrl) {
       res.status(400).json({ message: 'mediaUrl is required' });
       return;
@@ -56,6 +67,7 @@ storyRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response)
       data: {
         userId: req.userId!,
         mediaUrl,
+        mediaType: mediaType === 'video' ? 'video' : 'image',
         caption: (caption || '').toString().slice(0, 200),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
@@ -64,6 +76,7 @@ storyRouter.post('/', authenticateToken, async (req: AuthRequest, res: Response)
     res.status(201).json({
       id: story.id,
       mediaUrl: story.mediaUrl,
+      mediaType: story.mediaType || 'image',
       caption: story.caption,
       createdAt: story.createdAt.toISOString(),
       expiresAt: story.expiresAt.toISOString(),

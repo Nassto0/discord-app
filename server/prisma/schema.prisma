@@ -59,6 +59,7 @@ model Story {
   id        String   @id @default(uuid())
   userId    String
   mediaUrl  String
+  mediaType String?  // image | video
   caption   String?
   views     String   @default("[]")
   expiresAt DateTime

@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { getInitials, getAvatarColor, formatTime, fileUrl } from '@/lib/utils';
-import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag, Plus, X, Scissors } from 'lucide-react';
+import { Heart, Trash2, ImagePlus, Send, MessageCircle, Sparkles, Share2, Copy, Bookmark, BookmarkCheck, Link2, ChevronDown, ChevronUp, Flag, Plus, X, Scissors, MoreHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSocket } from '@/hooks/useSocket';
 import { showNotification, sounds } from '@/lib/sounds';
@@ -38,6 +38,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
   const [storyModal, setStoryModal] = useState<{ user: any; stories: any[]; index: number } | null>(null);
   const storyInputRef = useRef<HTMLInputElement>(null);
   const [storyDraft, setStoryDraft] = useState<{ file: File; previewUrl: string; caption: string; cropImage: boolean } | null>(null);
+  const [storyMenuOpen, setStoryMenuOpen] = useState(false);
 
   useEffect(() => {
     loadPosts();
@@ -262,7 +263,7 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
         if (blob) uploadFile = new File([blob], `story-${Date.now()}.jpg`, { type: 'image/jpeg' });
       }
       const { url } = await api.uploads.upload(uploadFile);
-      await api.stories.create({ mediaUrl: url, caption: storyDraft.caption.trim() || undefined });
+      await api.stories.create({ mediaUrl: url, caption: storyDraft.caption.trim() || undefined, mediaType: uploadFile.type.startsWith('video/') ? 'video' : 'image' } as any);
       setStoryGroups(await api.stories.list());
       pushToast('Story published for 24 hours.', 'success');
       URL.revokeObjectURL(storyDraft.previewUrl);
@@ -297,6 +298,32 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
       pushToast('Story deleted.', 'success');
     } catch (err) {
       pushToast((err as Error).message || 'Could not delete story', 'error');
+    }
+  };
+
+  const reportCurrentStory = async () => {
+    if (!storyModal) return;
+    const story = storyModal.stories[storyModal.index];
+    if (!story) return;
+    const reason = window.prompt('Report reason for this story:', 'other');
+    if (!reason) return;
+    try {
+      await api.reports.create({ targetType: 'story', targetId: story.id, reason: reason.trim() });
+      pushToast('Story reported. Thank you.', 'success');
+      setStoryMenuOpen(false);
+    } catch {
+      pushToast('Could not report this story.', 'error');
+    }
+  };
+
+  const clearMyStoriesNow = async () => {
+    try {
+      await api.stories.deleteMineAll();
+      setStoryGroups(await api.stories.list());
+      if (storyModal?.user.id === user?.id) setStoryModal(null);
+      pushToast('All your stories were deleted.', 'success');
+    } catch {
+      pushToast('Could not delete all stories.', 'error');
     }
   };
 
@@ -613,7 +640,27 @@ export function FeedPage({ onUserClick }: FeedPageProps) {
             <button onClick={() => setStoryModal(null)} className="absolute right-3 top-3 z-10 rounded-full bg-black/50 p-1.5 text-white">
               <X className="h-4 w-4" />
             </button>
-            {/\.(mp4|webm|ogg)$/i.test(storyModal.stories[storyModal.index]?.mediaUrl || '') ? (
+            <button onClick={() => setStoryMenuOpen((v) => !v)} className="absolute right-12 top-3 z-10 rounded-full bg-black/50 p-1.5 text-white">
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {storyMenuOpen && (
+              <div className="absolute right-12 top-11 z-20 min-w-[140px] rounded-lg border border-border bg-card p-1 shadow-xl">
+                <button onClick={reportCurrentStory} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-secondary">
+                  <Flag className="h-3.5 w-3.5" /> Report story
+                </button>
+                {storyModal.user.id === user?.id && (
+                  <>
+                    <button onClick={deleteCurrentStory} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-400 hover:bg-red-500/10">
+                      <Trash2 className="h-3.5 w-3.5" /> Delete this story
+                    </button>
+                    <button onClick={clearMyStoriesNow} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-400 hover:bg-red-500/10">
+                      <Trash2 className="h-3.5 w-3.5" /> Delete all my stories
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {storyModal.stories[storyModal.index]?.mediaType === 'video' ? (
               <video src={fileUrl(storyModal.stories[storyModal.index]?.mediaUrl)} className="h-[70vh] w-full object-contain" autoPlay controls />
             ) : (
               <img

@@ -100,7 +100,7 @@ function applyAudioConstraintsInternal(constraints: MediaTrackConstraints) {
 function getSavedOutputVolume(): number {
   try {
     const saved = localStorage.getItem('call-user-volume');
-    if (saved) return Math.max(0, Math.min(2, Number(saved) / 100));
+    if (saved) return Math.max(0.1, Math.min(2, Number(saved) / 100));
   } catch {}
   return 1;
 }
@@ -236,6 +236,8 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
       if (!audioEl) {
         audioEl = new Audio();
         audioEl.autoplay = true;
+        (audioEl as any).playsInline = true;
+        audioEl.muted = false;
       }
       if (audioEl.srcObject !== outputMediaDest!.stream) {
         audioEl.srcObject = outputMediaDest!.stream;

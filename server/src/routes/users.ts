@@ -55,18 +55,22 @@ userRouter.get('/:id', authenticateToken, async (req: AuthRequest, res: Response
     const targetId = String(req.params.id);
     const user = await prisma.user.findUnique({ where: { id: targetId }, select: userSelect });
     if (!user) { res.status(404).json({ message: 'User not found' }); return; }
-    const [follow, block] = await Promise.all([
+    const [follow, block, followersCount, followingCount] = await Promise.all([
       prisma.follow.findUnique({
         where: { followerId_followingId: { followerId: req.userId!, followingId: targetId } },
       }),
       prisma.block.findUnique({
         where: { blockerId_blockedId: { blockerId: req.userId!, blockedId: targetId } },
       }),
+      prisma.follow.count({ where: { followingId: targetId } }),
+      prisma.follow.count({ where: { followerId: targetId } }),
     ]);
     res.json({
       ...user,
       isFollowing: !!follow,
       isBlockedByMe: !!block,
+      followersCount,
+      followingCount,
       mutedUntil: user.mutedUntil ? user.mutedUntil.toISOString() : null,
       timeoutUntil: user.timeoutUntil ? user.timeoutUntil.toISOString() : null,
       lastSeen: user.lastSeen.toISOString(),
