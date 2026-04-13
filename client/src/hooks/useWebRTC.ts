@@ -23,8 +23,6 @@ const ICE_CONFIG = buildIceConfig();
 
 let pc: RTCPeerConnection | null = null;
 let audioEl: HTMLAudioElement | null = null;
-let inputGainNode: GainNode | null = null;
-let inputAudioCtx: AudioContext | null = null;
 let pendingCandidates: RTCIceCandidateInit[] = [];
 let activeCallId: string | null = null;
 let activeTargetUserId: string | null = null;
@@ -38,9 +36,6 @@ let outputGainNode: GainNode | null = null;
 let outputSourceNode: MediaStreamAudioSourceNode | null = null;
 let outputMediaDest: MediaStreamAudioDestinationNode | null = null;
 let audioSettingsListenerBound = false;
-let localMicSourceNode: MediaStreamAudioSourceNode | null = null;
-let localMicDestinationNode: MediaStreamAudioDestinationNode | null = null;
-
 function ensureAudioElement(): HTMLAudioElement {
   if (!audioEl) {
     audioEl = new Audio();
@@ -78,7 +73,7 @@ async function switchInputDevice(deviceId: string) {
     const newStream = await navigator.mediaDevices.getUserMedia({
       audio: { deviceId: deviceId !== 'default' ? { exact: deviceId } : undefined },
     });
-    const newTrack = buildMicTrack(newStream);
+    const newTrack = newStream.getAudioTracks()[0];
     const sender = pc.getSenders().find((s) => s.track?.kind === 'audio');
     if (sender) {
       // Stop old track, replace with new
@@ -96,9 +91,12 @@ async function switchInputDevice(deviceId: string) {
 function onAudioSettingsChanged(e: Event) {
   const { type, key, value } = (e as CustomEvent).detail;
   if (type === 'output-volume') {
-    if (outputGainNode) outputGainNode.gain.value = Math.max(0, Math.min(2, value / 100));
+    const n = Number(value);
+    const gain = Number.isFinite(n) ? Math.max(0, Math.min(3, n / 100)) : 1;
+    if (outputGainNode) outputGainNode.gain.value = gain;
+    if (audioEl) (audioEl as HTMLAudioElement).volume = 1;
   } else if (type === 'input-volume') {
-    if (inputGainNode) inputGainNode.gain.value = Math.max(0, Math.min(2.5, value / 45));
+    // Mic gain is applied via getUserMedia / device path only (no WebAudio send chain).
   } else if (type === 'output-device') {
     // Switch output device on audio element (Chrome/Edge only)
     if (audioEl && typeof (audioEl as any).setSinkId === 'function') {
@@ -127,48 +125,12 @@ function applyAudioConstraintsInternal(constraints: MediaTrackConstraints) {
 function getSavedOutputVolume(): number {
   try {
     const saved = localStorage.getItem('call-user-volume');
-    if (saved) return Math.max(0.1, Math.min(2, Number(saved) / 100));
-  } catch {}
-  return 1;
-}
-
-function getSavedInputVolume(): number {
-  try {
-    const settings = localStorage.getItem('audio-settings');
-    if (settings) {
-      const parsed = JSON.parse(settings);
-      const value = Number(parsed.inputVolume);
-      if (!Number.isNaN(value)) return Math.max(0, Math.min(2.5, value / 45));
-    }
-  } catch {}
-  return 1.6;
-}
-
-function cleanupInputAudioChain() {
-  if (localMicSourceNode) { try { localMicSourceNode.disconnect(); } catch {} localMicSourceNode = null; }
-  if (inputGainNode) { try { inputGainNode.disconnect(); } catch {} inputGainNode = null; }
-  localMicDestinationNode = null;
-  if (inputAudioCtx) { try { inputAudioCtx.close(); } catch {} inputAudioCtx = null; }
-}
-
-function buildMicTrack(stream: MediaStream): MediaStreamTrack {
-  const rawTrack = stream.getAudioTracks()[0];
-  if (!rawTrack) throw new Error('No microphone track available');
-  cleanupInputAudioChain();
-  try {
-    inputAudioCtx = new AudioContext();
-    localMicSourceNode = inputAudioCtx.createMediaStreamSource(stream);
-    inputGainNode = inputAudioCtx.createGain();
-    inputGainNode.gain.value = getSavedInputVolume();
-    localMicDestinationNode = inputAudioCtx.createMediaStreamDestination();
-    localMicSourceNode.connect(inputGainNode);
-    inputGainNode.connect(localMicDestinationNode);
-    if (inputAudioCtx.state === 'suspended') inputAudioCtx.resume().catch(() => {});
-    const processedTrack = localMicDestinationNode.stream.getAudioTracks()[0];
-    return processedTrack || rawTrack;
+    if (saved === null || saved === '') return 1;
+    const n = Number(saved);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(0, Math.min(3, n / 100));
   } catch {
-    cleanupInputAudioChain();
-    return rawTrack;
+    return 1;
   }
 }
 
@@ -191,7 +153,6 @@ function cleanupWebRTC() {
   if (outputGainNode) { try { outputGainNode.disconnect(); } catch {} outputGainNode = null; }
   outputMediaDest = null;
   if (outputAudioCtx) { try { outputAudioCtx.close(); } catch {} outputAudioCtx = null; }
-  cleanupInputAudioChain();
   remoteBaseStream = null;
   pendingCandidates = [];
   activeTargetUserId = null;
@@ -287,30 +248,35 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     // Force a fresh object reference so Zustand detects the change
     pushRemoteStream(remote);
 
-    // Route audio through a GainNode to support volume boost beyond 100%
+    // Remote playback: GainNode supports "User Volume" > 100% without breaking the track.
+    // Never attach video ontrack events to the hidden audio element (that used to mute/break audio).
     if (event.track.kind === 'audio') {
-      if (!outputAudioCtx) {
-        outputAudioCtx = new AudioContext();
-        outputGainNode = outputAudioCtx.createGain();
-        outputGainNode.gain.value = getSavedOutputVolume();
-        outputMediaDest = outputAudioCtx.createMediaStreamDestination();
-        outputGainNode.connect(outputMediaDest);
-      }
-      if (outputAudioCtx.state === 'suspended') outputAudioCtx.resume().catch(() => {});
-      if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} }
-      outputSourceNode = outputAudioCtx.createMediaStreamSource(remote);
-      outputSourceNode.connect(outputGainNode!);
+      const el = ensureAudioElement();
+      el.volume = 1;
+      try {
+        if (!outputAudioCtx) {
+          outputAudioCtx = new AudioContext();
+          outputGainNode = outputAudioCtx.createGain();
+          outputGainNode.gain.value = getSavedOutputVolume();
+          outputMediaDest = outputAudioCtx.createMediaStreamDestination();
+          outputGainNode.connect(outputMediaDest);
+        }
+        if (outputAudioCtx.state === 'suspended') outputAudioCtx.resume().catch(() => {});
+        if (outputSourceNode) { try { outputSourceNode.disconnect(); } catch {} }
+        outputSourceNode = outputAudioCtx.createMediaStreamSource(remote);
+        outputSourceNode.connect(outputGainNode!);
 
-      const el = ensureAudioElement();
-      if (el.srcObject !== outputMediaDest!.stream) {
-        el.srcObject = outputMediaDest!.stream;
+        if (el.srcObject !== outputMediaDest!.stream) {
+          el.srcObject = outputMediaDest!.stream;
+        }
         tryPlayAudioElement();
-      }
-    } else if (remote.getAudioTracks().length > 0) {
-      // Fallback: if processing path is unavailable, attach remote stream directly.
-      const el = ensureAudioElement();
-      if (el.srcObject !== remote) {
-        el.srcObject = remote;
+      } catch (err) {
+        console.error('[WebRTC] remote audio graph failed, using direct stream:', err);
+        if (outputSourceNode) {
+          try { outputSourceNode.disconnect(); } catch {}
+          outputSourceNode = null;
+        }
+        if (el.srcObject !== remote) el.srcObject = remote;
         tryPlayAudioElement();
       }
     }
@@ -331,6 +297,7 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     console.log('[WebRTC] connection state:', state);
     if (state === 'connected') {
       useCallStore.getState().setConnected();
+      if (outputGainNode) outputGainNode.gain.value = getSavedOutputVolume();
     }
   };
 
@@ -439,28 +406,34 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     } catch {}
   }
 
+  const audioConstraints: MediaTrackConstraints = {
+    deviceId: inputDeviceId ? { ideal: inputDeviceId } : undefined,
+    echoCancellation: echoCancel,
+    noiseSuppression: noiseSuppress,
+    autoGainControl: autoGain,
+  };
+
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: inputDeviceId ? { ideal: inputDeviceId } : undefined,
-        echoCancellation: echoCancel,
-        noiseSuppression: noiseSuppress,
-        autoGainControl: autoGain,
-        sampleRate: 48000,
-        sampleSize: 16,
-        channelCount: 2,
-      },
+      audio: audioConstraints,
       video: store.callType === 'video',
     });
-  } catch (err: any) {
-    console.error('[WebRTC] getUserMedia failed:', err);
-    // If permission was denied or dismissed, don't silently hang up — let the user know
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      alert('Microphone access is required for calls. Please allow microphone access in your browser settings and try again.');
+  } catch (firstErr: any) {
+    console.warn('[WebRTC] getUserMedia with constraints failed, retrying minimal audio:', firstErr);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: store.callType === 'video',
+      });
+    } catch (err: any) {
+      console.error('[WebRTC] getUserMedia failed:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        alert('Microphone access is required for calls. Please allow microphone access in your browser settings and try again.');
+      }
+      hangup();
+      return;
     }
-    hangup();
-    return;
   }
 
   if (useCallStore.getState().callId !== callId) {
@@ -468,12 +441,9 @@ export async function startWebRTC(isInitiator: boolean, targetUserId: string) {
     return;
   }
 
-  const micTrack = buildMicTrack(stream);
-  const outboundStream = new MediaStream([micTrack, ...stream.getVideoTracks()]);
-  store.setLocalStream(outboundStream);
-  // addTrack fires onnegotiationneeded but isSetupComplete is still false,
-  // so the guard at the top of the handler prevents a spurious offer
-  outboundStream.getTracks().forEach((track) => pc!.addTrack(track, outboundStream));
+  // Send the raw capture track (WebAudio-processed mic breaks encoding on some mobile browsers).
+  store.setLocalStream(stream);
+  stream.getTracks().forEach((track) => pc!.addTrack(track, stream));
   localStreamReady = true;
 
   if (isInitiator) {

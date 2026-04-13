@@ -31,11 +31,33 @@ export function useSocket() {
       reconnectionDelay: 1000,
     });
 
+    // So fileUrl() can resolve /uploads when VITE_API_URL is not baked into the client build.
+    try {
+      if (typeof serverUrl === 'string' && /^https?:\/\//i.test(serverUrl)) {
+        localStorage.setItem('nasscord-server-origin', new URL(serverUrl).origin);
+        window.dispatchEvent(new Event('wallpaper-changed'));
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        localStorage.setItem('nasscord-server-origin', 'http://localhost:3001');
+        window.dispatchEvent(new Event('wallpaper-changed'));
+      }
+    } catch {
+      /* ignore */
+    }
+
     socketRef.current = socket;
     globalSocket = socket;
 
     socket.on('connect', async () => {
       console.log('Socket connected');
+      try {
+        const raw = (socket.io as { uri?: string }).uri;
+        if (typeof raw === 'string' && /^https?:\/\//i.test(raw)) {
+          localStorage.setItem('nasscord-server-origin', new URL(raw).origin);
+          window.dispatchEvent(new Event('wallpaper-changed'));
+        }
+      } catch {
+        /* ignore */
+      }
       try {
         const onlineIds = await api.online();
         useChatStore.getState().setOnlineUsers(onlineIds);

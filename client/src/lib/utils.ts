@@ -40,15 +40,29 @@ export function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+/** Backend origin for /uploads and other static paths (must match API/socket host in production). */
+export function getAssetOrigin(): string {
+  const env = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (env && env !== '/') return env.replace(/\/$/, '');
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:3001';
+    const persisted = localStorage.getItem('nasscord-server-origin');
+    if (persisted) return persisted.replace(/\/$/, '');
+    return window.location.origin;
+  }
+  return '';
+}
+
 // Resolve relative file URLs (e.g. /uploads/file.jpg) to absolute when API is on another origin
-const API_URL = import.meta.env.VITE_API_URL || '';
 export function fileUrl(url: string | null | undefined): string {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) return url;
   // Handle protocol-less absolute hosts that may exist in older persisted rows.
   if (/^[a-z0-9.-]+\.[a-z]{2,}\/.+/i.test(url)) return `https://${url}`;
   const normalized = url.startsWith('/') ? url : `/uploads/${url}`;
-  return `${API_URL}${normalized}`;
+  const base = getAssetOrigin();
+  return `${base}${normalized}`;
 }
 
 export function formatLastSeen(dateStr: string): string {

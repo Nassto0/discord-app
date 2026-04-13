@@ -85,6 +85,15 @@ export function CallView() {
     return () => clearInterval(i);
   }, [status]);
 
+  // Re-apply saved user volume after WebRTC creates the output gain node (avoids silent remote until slider moves).
+  useEffect(() => {
+    if (status !== 'connected') return;
+    const v = Number(localStorage.getItem('call-user-volume'));
+    if (Number.isFinite(v)) {
+      window.dispatchEvent(new CustomEvent('audio-settings-changed', { detail: { type: 'output-volume', value: v } }));
+    }
+  }, [status]);
+
   useEffect(() => {
     if (!isScreenSharing) setScreenExpanded(false);
   }, [isScreenSharing]);
