@@ -29,6 +29,8 @@ export const api = {
     login: (data: { email: string; password: string }) =>
       request<{ token: string; user: any; assetBaseUrl?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
     me: () => request<any>('/auth/me'),
+    forgotPassword: (email: string) => request<{ code?: string; message: string }>('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+    resetPassword: (email: string, code: string, newPassword: string) => request<{ message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, code, newPassword }) }),
   },
   users: {
     search: (q: string) => request<any[]>(`/users/search?q=${encodeURIComponent(q)}`),
@@ -107,5 +109,30 @@ export const api = {
   },
   streaks: {
     get: (conversationId: string) => request<any[]>(`/streaks/${conversationId}`),
+  },
+  friends: {
+    list: () => request<any[]>('/friends'),
+    requests: () => request<any[]>('/friends/requests'),
+    sent: () => request<any[]>('/friends/sent'),
+    sendRequest: (userId: string) => request<any>(`/friends/request/${userId}`, { method: 'POST' }),
+    accept: (requestId: string) => request<any>(`/friends/accept/${requestId}`, { method: 'POST' }),
+    reject: (requestId: string) => request<any>(`/friends/reject/${requestId}`, { method: 'POST' }),
+    remove: (userId: string) => request<any>(`/friends/${userId}`, { method: 'DELETE' }),
+    search: (q: string) => request<any[]>(`/users/search?q=${encodeURIComponent(q)}`),
+  },
+  ai: {
+    chat: (messages: any[]) => request<any>('/ai/chat', { method: 'POST', body: JSON.stringify({ messages, model: 'gpt-4o-mini' }) }),
+  },
+  servers: {
+    list: () => request<any[]>('/servers'),
+    create: (data: { name: string; description?: string; isPublic?: boolean }) => request<any>('/servers', { method: 'POST', body: JSON.stringify(data) }),
+    public: () => request<any[]>('/servers/public'),
+    join: (inviteCode: string) => request<any>(`/servers/join/${inviteCode}`, { method: 'POST' }),
+    get: (id: string) => request<any>(`/servers/${id}`),
+    createChannel: (serverId: string, data: { name: string; type?: string; description?: string }) => request<any>(`/servers/${serverId}/channels`, { method: 'POST', body: JSON.stringify(data) }),
+    leave: (id: string) => request<any>(`/servers/${id}/leave`, { method: 'POST' }),
+    delete: (id: string) => request<any>(`/servers/${id}`, { method: 'DELETE' }),
+    channelMessages: (serverId: string, channelId: string) => request<any[]>(`/servers/${serverId}/channels/${channelId}/messages`),
+    sendMessage: (serverId: string, channelId: string, content: string) => request<any>(`/servers/${serverId}/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify({ content }) }),
   },
 };

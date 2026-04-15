@@ -53,6 +53,13 @@ model User {
   dmStreaks             DmStreak[]
   adminActionsBy       AdminAction[] @relation("adminActor")
   adminActionsOn       AdminAction[] @relation("adminTarget")
+  friendRequestsSent     FriendRequest[] @relation("frSender")
+  friendRequestsReceived FriendRequest[] @relation("frReceiver")
+  serversOwned   Server[]       @relation("serverOwner")
+  serverMembers  ServerMember[]
+  serverMessages ServerMessage[] @relation("serverMsgSender")
+  passwordResetCode   String?
+  passwordResetExpiry DateTime?
 }
 
 model Story {
@@ -325,4 +332,90 @@ model Block {
   @@unique([blockerId, blockedId])
   @@index([blockerId])
   @@index([blockedId])
+}
+
+model FriendRequest {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     String   @default("pending") // pending | accepted | rejected
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  sender   User @relation("frSender",   fields: [senderId],   references: [id], onDelete: Cascade)
+  receiver User @relation("frReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId])
+  @@index([senderId])
+}
+
+model Server {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  icon        String?
+  banner      String?
+  ownerId     String
+  inviteCode  String   @unique @default(uuid())
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  owner    User            @relation("serverOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members  ServerMember[]
+  channels ServerChannel[]
+
+  @@index([ownerId])
+  @@index([inviteCode])
+}
+
+model ServerMember {
+  id        String   @id @default(uuid())
+  serverId  String
+  userId    String
+  role      String   @default("member") // owner | admin | member
+  nickname  String?
+  joinedAt  DateTime @default(now())
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@index([userId])
+}
+
+model ServerChannel {
+  id          String   @id @default(uuid())
+  serverId    String
+  name        String
+  type        String   @default("text") // text | voice | announcement
+  description String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  server   Server           @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messages ServerMessage[]
+
+  @@index([serverId])
+}
+
+model ServerMessage {
+  id        String   @id @default(uuid())
+  channelId String
+  senderId  String
+  content   String?
+  type      String   @default("text")
+  fileUrl   String?
+  editedAt  DateTime?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  channel ServerChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender  User          @relation("serverMsgSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@index([senderId])
 }

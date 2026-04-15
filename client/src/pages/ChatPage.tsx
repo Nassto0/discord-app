@@ -10,8 +10,12 @@ import { ProfilePage } from '@/pages/ProfilePage';
 import { FeedPage } from '@/pages/FeedPage';
 import { AdminPage } from '@/pages/AdminPage';
 import { UserPanel } from '@/components/chat/UserPanel';
+import { FriendRequestsPanel } from '@/components/chat/FriendRequestsPanel';
+import { NassAIPanel } from '@/components/chat/NassAIPanel';
+import { ServerSidebar } from '@/components/servers/ServerSidebar';
+import { ServerChannelView } from '@/components/servers/ServerChannelView';
 
-type AppSection = 'chat' | 'feed' | 'settings' | 'admin';
+type AppSection = 'chat' | 'feed' | 'settings' | 'admin' | 'friends' | 'nassai' | 'servers';
 
 interface ChatPageProps {
   initialSection?: AppSection;
@@ -25,6 +29,8 @@ export function ChatPage({ initialSection = 'chat' }: ChatPageProps) {
   const [showSidebar, setShowSidebar] = useState(true);
   const [section, setSection] = useState<AppSection>(initialSection);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [activeServer, setActiveServer] = useState<any>(null);
+  const [activeChannel, setActiveChannel] = useState<any>(null);
   const navigate = useNavigate();
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
@@ -62,17 +68,43 @@ export function ChatPage({ initialSection = 'chat' }: ChatPageProps) {
         <div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setShowSidebar(false)} />
       )}
 
-      <div className="flex flex-1 flex-col min-w-0 pb-[52px] md:pb-0">
+      <div className="flex flex-1 min-w-0 pb-[52px] md:pb-0 overflow-hidden">
         {section === 'admin' && canAccessAdmin ? (
-          <AdminPage onBack={() => handleSectionChange('chat')} />
+          <div className="flex flex-1 flex-col min-w-0">
+            <AdminPage onBack={() => handleSectionChange('chat')} />
+          </div>
         ) : section === 'feed' ? (
-          <FeedPage onUserClick={handleUserClick} />
+          <div className="flex flex-1 flex-col min-w-0">
+            <FeedPage onUserClick={handleUserClick} />
+          </div>
         ) : section === 'settings' ? (
-          <ProfilePage onBack={() => handleSectionChange('chat')} />
+          <div className="flex flex-1 flex-col min-w-0">
+            <ProfilePage onBack={() => handleSectionChange('chat')} />
+          </div>
+        ) : section === 'friends' ? (
+          <div className="flex flex-1 flex-col min-w-0">
+            <FriendRequestsPanel />
+          </div>
+        ) : section === 'nassai' ? (
+          <div className="flex flex-1 flex-col min-w-0">
+            <NassAIPanel />
+          </div>
+        ) : section === 'servers' ? (
+          <div className="flex flex-1 min-w-0 overflow-hidden">
+            <ServerSidebar
+              onChannelSelect={(server, channel) => { setActiveServer(server); setActiveChannel(channel); setShowSidebar(false); }}
+              activeChannelId={activeChannel?.id}
+            />
+            <ServerChannelView server={activeServer} channel={activeChannel} />
+          </div>
         ) : activeConversationId ? (
-          <ChatView onBack={() => setShowSidebar(true)} onUserClick={handleUserClick} />
+          <div className="flex flex-1 flex-col min-w-0">
+            <ChatView onBack={() => setShowSidebar(true)} onUserClick={handleUserClick} />
+          </div>
         ) : (
-          <EmptyChat onNewChat={() => setShowSidebar(true)} />
+          <div className="flex flex-1 flex-col min-w-0">
+            <EmptyChat onNewChat={() => setShowSidebar(true)} />
+          </div>
         )}
       </div>
 

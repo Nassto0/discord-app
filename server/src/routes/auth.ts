@@ -78,6 +78,57 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+authRouter.post('/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) { res.status(400).json({ message: 'Email required' }); return; }
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      // Don't reveal if email exists
+      res.json({ message: 'If that email exists, a reset code has been generated' });
+      return;
+    }
+    const resetCode = String(Math.floor(100000 + Math.random() * 900000));
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await (prisma as any).user.update({
+      where: { id: user.id },
+      data: { passwordResetCode: resetCode, passwordResetExpiry: expiry },
+    });
+    // In production this would be emailed; for now return directly
+    res.json({ code: resetCode, message: 'Reset code generated (in production this would be emailed)' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+authRouter.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) { res.status(400).json({ message: 'Email, code, and new password required' }); return; }
+    if (newPassword.length < 6) { res.status(400).json({ message: 'Password must be at least 6 characters' }); return; }
+    const user = await (prisma as any).user.findUnique({ where: { email } });
+    if (!user || !user.passwordResetCode || !user.passwordResetExpiry) {
+      res.status(400).json({ message: 'Invalid or expired reset code' }); return;
+    }
+    if (user.passwordResetCode !== String(code)) {
+      res.status(400).json({ message: 'Invalid reset code' }); return;
+    }
+    if (new Date(user.passwordResetExpiry) < new Date()) {
+      res.status(400).json({ message: 'Reset code has expired' }); return;
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await (prisma as any).user.update({
+      where: { id: user.id },
+      data: { passwordHash, passwordResetCode: null, passwordResetExpiry: null },
+    });
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 authRouter.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });

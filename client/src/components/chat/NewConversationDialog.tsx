@@ -20,7 +20,7 @@ export function NewConversationDialog({ onClose }: Props) {
   const { addConversation, setActiveConversation, onlineUsers } = useChatStore();
 
   useEffect(() => {
-    api.users.all().then(setAllUsers).catch(() => {});
+    api.friends.list().then(setAllUsers).catch(() => {});
   }, []);
 
   const filtered = allUsers.filter((u) => {
@@ -165,7 +165,7 @@ export function NewConversationDialog({ onClose }: Props) {
             <div className="flex flex-col items-center py-8">
               <MessageCircle className="mb-2 h-8 w-8 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">
-                {allUsers.length === 0 ? 'No other users yet' : 'No users found'}
+                {allUsers.length === 0 ? 'Add friends first to start a DM' : 'No users found'}
               </p>
             </div>
           )}

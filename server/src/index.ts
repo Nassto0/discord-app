@@ -13,6 +13,9 @@ import { postRouter } from './routes/posts';
 import { adminRouter } from './routes/admin';
 import { reportRouter } from './routes/reports';
 import { storyRouter } from './routes/stories';
+import { friendRouter } from './routes/friends';
+import { aiRouter } from './routes/ai';
+import { serverRouter } from './routes/servers';
 import { setupSocketHandlers, getOnlineUsers } from './socket';
 import { authenticateSocket, prisma } from './middleware/auth';
 
@@ -55,6 +58,12 @@ app.use('/api/posts', postRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/reports', reportRouter);
 app.use('/api/stories', storyRouter);
+app.use('/api/friends', friendRouter);
+app.use('/api/ai', aiRouter);
+app.use('/api/servers', serverRouter);
+
+// Rate limiting note: install express-rate-limit and configure per-IP limits
+// for auth endpoints to prevent brute-force attacks in production.
 
 // Streak endpoint: get streaks for a conversation
 app.get('/api/streaks/:conversationId', async (req, res) => {

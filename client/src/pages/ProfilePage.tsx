@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AudioSettings } from '@/components/settings/AudioSettings';
 import { themes, applyTheme, loadSavedTheme } from '@/lib/themes';
 import { getSocket } from '@/hooks/useSocket';
+import { useLanguageStore } from '@/stores/languageStore';
 
 interface ProfilePageProps { onBack: () => void; }
 type SettingsTab = 'account' | 'voice' | 'appearance';
@@ -301,6 +302,7 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
 
                   <ChatWallpaper />
                   <CompactModeSetting />
+                  <LanguageSetting />
 
                   <div>
                     <label className="mb-4 block text-xs font-bold uppercase tracking-wider text-muted-foreground">App Theme</label>
@@ -489,6 +491,34 @@ function ChatWallpaper() {
             )}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function LanguageSetting() {
+  const { language, setLanguage } = useLanguageStore();
+  return (
+    <div className="rounded-2xl border border-border bg-card/30 p-5">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-foreground">Language</p>
+        <p className="text-xs text-muted-foreground mt-1">Choose your preferred interface language</p>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setLanguage('en')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold border-2 transition-all active:scale-95
+            ${language === 'en' ? 'border-primary bg-primary/10 text-primary' : 'border-transparent bg-secondary text-muted-foreground hover:bg-secondary/80'}`}
+        >
+          <span className="text-base">🇺🇸</span> English
+        </button>
+        <button
+          onClick={() => setLanguage('ar')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold border-2 transition-all active:scale-95
+            ${language === 'ar' ? 'border-primary bg-primary/10 text-primary' : 'border-transparent bg-secondary text-muted-foreground hover:bg-secondary/80'}`}
+        >
+          <span className="text-base">🇸🇦</span> العربية
+        </button>
       </div>
     </div>
   );

@@ -13,8 +13,15 @@ const userSelect = {
 
 userRouter.get('/all', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = req.userId!;
+    // Only return accepted friends
+    const friendships = await db.friendRequest.findMany({
+      where: { status: 'accepted', OR: [{ senderId: userId }, { receiverId: userId }] },
+    });
+    const friendIds = friendships.map((fr: any) => fr.senderId === userId ? fr.receiverId : fr.senderId);
+    if (friendIds.length === 0) { res.json([]); return; }
     const users = await prisma.user.findMany({
-      where: { id: { not: req.userId } },
+      where: { id: { in: friendIds } },
       select: userSelect,
       orderBy: { username: 'asc' },
     });
@@ -33,18 +40,34 @@ userRouter.get('/all', authenticateToken, async (req: AuthRequest, res: Response
 userRouter.get('/search', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const q = req.query.q as string;
-    if (!q) { res.status(400).json({ message: 'Search query required' }); return; }
+    if (!q || q.trim().length < 2) { res.status(400).json({ message: 'Search query must be at least 2 characters' }); return; }
+
+    // Get IDs of users who have blocked the requester or whom the requester blocked
+    const blocks = await db.block.findMany({
+      where: { OR: [{ blockerId: req.userId }, { blockedId: req.userId }] },
+      select: { blockerId: true, blockedId: true },
+    });
+    const blockedIds = new Set<string>();
+    for (const b of blocks) {
+      if (b.blockerId === req.userId) blockedIds.add(b.blockedId);
+      else blockedIds.add(b.blockerId);
+    }
+
     const users = await prisma.user.findMany({
-      where: { AND: [{ id: { not: req.userId } }, { username: { contains: q } }] },
-      select: userSelect,
+      where: {
+        AND: [
+          { id: { not: req.userId } },
+          { username: { contains: q } },
+          { isBanned: false },
+          blockedIds.size > 0 ? { id: { notIn: [...blockedIds] } } : {},
+        ],
+      },
+      select: { id: true, username: true, avatar: true, status: true, customStatus: true, lastSeen: true },
       take: 20,
     });
     res.json(users.map((u) => ({
       ...u,
-      mutedUntil: u.mutedUntil ? u.mutedUntil.toISOString() : null,
-      timeoutUntil: u.timeoutUntil ? u.timeoutUntil.toISOString() : null,
       lastSeen: u.lastSeen.toISOString(),
-      createdAt: u.createdAt.toISOString(),
     })));
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });

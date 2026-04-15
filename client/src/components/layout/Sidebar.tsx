@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatTime, getInitials, getAvatarColor, fileUrl } from '@/lib/utils';
-import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download, Shield, VolumeX } from 'lucide-react';
+import { Search, Plus, LogOut, Users, Settings, Home, MessageSquare, X, CheckCheck, Download, Shield, VolumeX, UserPlus, Sparkles, Server } from 'lucide-react';
 import { NewConversationDialog } from '@/components/chat/NewConversationDialog';
 import { AnimatePresence, motion } from 'framer-motion';
+import { api } from '@/lib/api';
 
 interface SidebarProps {
   onConversationSelect: () => void;
@@ -21,6 +22,15 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
   const { user, logout } = useAuthStore();
   const [search, setSearch] = useState('');
   const [showNewConv, setShowNewConv] = useState(false);
+  const [pendingFriendCount, setPendingFriendCount] = useState(0);
+
+  useEffect(() => {
+    api.friends.requests().then((r) => setPendingFriendCount(r.length)).catch(() => {});
+    const interval = setInterval(() => {
+      api.friends.requests().then((r) => setPendingFriendCount(r.length)).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [pinnedConversations, setPinnedConversations] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('pinned-conversations') || '[]'); } catch { return []; }
@@ -114,7 +124,7 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
         </button>
       </div>
 
-      <div className="flex gap-1 px-3 py-2">
+      <div className="flex flex-wrap gap-1 px-3 py-2">
         <button onClick={() => onSectionChange('feed')}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors
             ${activeSection === 'feed' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
@@ -124,6 +134,26 @@ export function Sidebar({ onConversationSelect, onShowProfile, onLogoClick, acti
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors
             ${activeSection === 'chat' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
           <MessageSquare className="h-3.5 w-3.5" /> Chats
+        </button>
+        <button onClick={() => onSectionChange('friends')}
+          className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors
+            ${activeSection === 'friends' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <UserPlus className="h-3.5 w-3.5" /> Friends
+          {pendingFriendCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">
+              {pendingFriendCount}
+            </span>
+          )}
+        </button>
+        <button onClick={() => onSectionChange('servers')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors
+            ${activeSection === 'servers' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <Server className="h-3.5 w-3.5" /> Servers
+        </button>
+        <button onClick={() => onSectionChange('nassai')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors
+            ${activeSection === 'nassai' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+          <Sparkles className="h-3.5 w-3.5" /> NassAI
         </button>
         {canAccessAdmin && (
           <button onClick={() => onSectionChange('admin')}

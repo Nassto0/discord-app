@@ -389,6 +389,42 @@ export function setupSocketHandlers(io: Server) {
       socket.join(`conv:${conversationId}`);
     });
 
+    socket.on('server:join', (data: { serverId: string; channelId?: string }) => {
+      const { serverId, channelId } = data;
+      socket.join(`server:${serverId}`);
+      if (channelId) socket.join(`server:${serverId}:channel:${channelId}`);
+    });
+
+    socket.on('server:channel:join', (data: { serverId: string; channelId: string }) => {
+      socket.join(`server:${data.serverId}:channel:${data.channelId}`);
+    });
+
+    socket.on('server:message:send', async (data: { serverId: string; channelId: string; content: string }, callback?: (msg: any) => void) => {
+      try {
+        const { serverId, channelId, content } = data;
+        if (!content || !content.trim()) return;
+        const member = await db.serverMember.findUnique({
+          where: { serverId_userId: { serverId, userId } },
+        });
+        if (!member) return;
+        const message = await db.serverMessage.create({
+          data: { channelId, senderId: userId, content: content.trim() },
+          include: { sender: { select: userSelect } },
+        });
+        const serialized = {
+          ...message,
+          createdAt: message.createdAt instanceof Date ? message.createdAt.toISOString() : message.createdAt,
+          updatedAt: message.updatedAt instanceof Date ? message.updatedAt.toISOString() : message.updatedAt,
+          editedAt: null,
+          sender: serializeUser(message.sender),
+        };
+        io.to(`server:${serverId}:channel:${channelId}`).emit('server:message:received', serialized);
+        if (callback) callback(serialized);
+      } catch (error) {
+        console.error('Server message send error:', error);
+      }
+    });
+
     socket.on('conversation:created', async (data) => {
       const { conversationId, memberIds } = data;
       for (const memberId of memberIds) {

@@ -7,6 +7,11 @@ import './index.css';
 
 loadSavedTheme();
 
+// Initialize language direction on app load
+const savedLang = localStorage.getItem('language') || 'en';
+document.documentElement.dir = savedLang === 'ar' ? 'rtl' : 'ltr';
+document.documentElement.lang = savedLang;
+
 // Apply saved zoom level
 const savedZoom = localStorage.getItem('app-zoom');
 if (savedZoom) document.documentElement.style.fontSize = `${savedZoom}%`;
